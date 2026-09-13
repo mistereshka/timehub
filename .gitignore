@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+release/
+coverage/
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Local databases never go to git — activity data is private
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

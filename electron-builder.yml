@@ -1,0 +1,33 @@
+appId: io.github.mistereshka.timehub
+productName: timehub
+copyright: Copyright © 2026 mistereshka
+directories:
+  output: release/${version}
+  buildResources: resources
+files:
+  - out/**
+  - resources/**
+  - package.json
+  - '!out/web/**'
+  - '!**/*.map'
+asarUnpack:
+  - resources/**
+  - node_modules/koffi/**
+  - node_modules/@koromix/**
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: resources/icon.png
+  artifactName: ${productName}-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: timehub
+publish:
+  provider: github
+  owner: mistereshka
+  repo: timehub
+  releaseType: draft
