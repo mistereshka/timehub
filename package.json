@@ -15,7 +15,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
-    "build:win": "npm run build && electron-builder --win"
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "icons": "electron scripts/render-icons.cjs"
   },
   "dependencies": {
     "koffi": "^3.2.1"

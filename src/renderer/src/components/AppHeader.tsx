@@ -14,6 +14,7 @@ import { useI18n, type MessageKey } from '../i18n'
 import { isTypingTarget } from '../utils'
 import { AppIcon, HoverCard } from './common'
 import { GameCard, MusicCard } from './PresenceCards'
+import logo from '../assets/logo.png'
 
 export function AppHeader(): ReactNode {
   const { t } = useI18n()
@@ -41,9 +42,7 @@ export function AppHeader(): ReactNode {
   return (
     <header className="app-header">
       <Link to="/" className="app-logo">
-        <span className="app-logo-mark">
-          <ClockIcon size={18} />
-        </span>
+        <img className="app-logo-img" src={logo} alt="" width={32} height={32} draggable={false} />
         timehub
       </Link>
       <form

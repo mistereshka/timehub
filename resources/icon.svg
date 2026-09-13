@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c2531"/>
+      <stop offset="1" stop-color="#05080d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.55" r="0.5">
+      <stop offset="0" stop-color="#2ea043" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#2ea043" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#8ef59b"/>
+      <stop offset="0.55" stop-color="#3fb950"/>
+      <stop offset="1" stop-color="#1a7f37"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#161b22"/>
+      <stop offset="1" stop-color="#0b0f15"/>
+    </linearGradient>
+    <clipPath id="tile">
+      <rect x="40" y="40" width="944" height="944" rx="232"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="40" y="40" width="944" height="944" rx="232" fill="url(#bg)"/>
+
+  <!-- contribution graph in the background -->
+  <g clip-path="url(#tile)" opacity="0.5">
+    <g fill="#0e4429">
+      <rect x="76" y="76" width="104" height="104" rx="22"/><rect x="460" y="76" width="104" height="104" rx="22"/>
+      <rect x="76" y="204" width="104" height="104" rx="22"/><rect x="460" y="204" width="104" height="104" rx="22"/>
+      <rect x="844" y="204" width="104" height="104" rx="22"/><rect x="588" y="332" width="104" height="104" rx="22"/>
+      <rect x="204" y="460" width="104" height="104" rx="22"/><rect x="844" y="460" width="104" height="104" rx="22"/>
+      <rect x="76" y="588" width="104" height="104" rx="22"/><rect x="716" y="588" width="104" height="104" rx="22"/>
+      <rect x="332" y="716" width="104" height="104" rx="22"/><rect x="844" y="716" width="104" height="104" rx="22"/>
+      <rect x="204" y="844" width="104" height="104" rx="22"/><rect x="460" y="844" width="104" height="104" rx="22"/>
+    </g>
+    <g fill="#006d32">
+      <rect x="332" y="76" width="104" height="104" rx="22"/><rect x="204" y="204" width="104" height="104" rx="22"/>
+      <rect x="716" y="204" width="104" height="104" rx="22"/><rect x="460" y="332" width="104" height="104" rx="22"/>
+      <rect x="76" y="460" width="104" height="104" rx="22"/><rect x="716" y="460" width="104" height="104" rx="22"/>
+      <rect x="332" y="588" width="104" height="104" rx="22"/><rect x="204" y="716" width="104" height="104" rx="22"/>
+      <rect x="460" y="716" width="104" height="104" rx="22"/><rect x="332" y="844" width="104" height="104" rx="22"/>
+      <rect x="588" y="844" width="104" height="104" rx="22"/>
+    </g>
+    <g fill="#26a641">
+      <rect x="844" y="76" width="104" height="104" rx="22"/><rect x="332" y="204" width="104" height="104" rx="22"/>
+      <rect x="204" y="332" width="104" height="104" rx="22"/><rect x="844" y="332" width="104" height="104" rx="22"/>
+      <rect x="332" y="460" width="104" height="104" rx="22"/><rect x="588" y="460" width="104" height="104" rx="22"/>
+      <rect x="460" y="588" width="104" height="104" rx="22"/><rect x="844" y="588" width="104" height="104" rx="22"/>
+      <rect x="76" y="716" width="104" height="104" rx="22"/><rect x="588" y="716" width="104" height="104" rx="22"/>
+      <rect x="716" y="844" width="104" height="104" rx="22"/>
+    </g>
+    <g fill="#39d353">
+      <rect x="332" y="332" width="104" height="104" rx="22"/><rect x="460" y="460" width="104" height="104" rx="22"/>
+      <rect x="588" y="588" width="104" height="104" rx="22"/><rect x="716" y="716" width="104" height="104" rx="22"/>
+      <rect x="844" y="844" width="104" height="104" rx="22"/>
+    </g>
+    <rect x="40" y="40" width="944" height="944" fill="url(#glow)"/>
+  </g>
+
+  <!-- stopwatch -->
+  <g>
+    <rect x="462" y="150" width="100" height="74" rx="22" fill="url(#ring)"/>
+    <rect x="490" y="212" width="44" height="52" rx="10" fill="#1a7f37"/>
+    <rect x="-30" y="-34" width="60" height="54" rx="14" fill="url(#ring)" transform="translate(752 318) rotate(45)"/>
+
+    <circle cx="512" cy="560" r="300" fill="url(#face)"/>
+    <circle cx="512" cy="560" r="288" fill="none" stroke="#21262d" stroke-width="64"/>
+    <!-- tracked time: a progress arc around the dial -->
+    <circle cx="512" cy="560" r="288" fill="none" stroke="url(#ring)" stroke-width="64" stroke-linecap="round"
+            stroke-dasharray="1300 600" transform="rotate(-90 512 560)"/>
+
+    <g stroke="#8b949e" stroke-width="18" stroke-linecap="round" opacity="0.8">
+      <line x1="512" y1="330" x2="512" y2="362"/>
+      <line x1="742" y1="560" x2="710" y2="560"/>
+      <line x1="512" y1="790" x2="512" y2="758"/>
+      <line x1="282" y1="560" x2="314" y2="560"/>
+    </g>
+
+    <g stroke="#f0f6fc" stroke-linecap="round">
+      <line x1="512" y1="560" x2="512" y2="386" stroke-width="44"/>
+      <line x1="512" y1="560" x2="630" y2="628" stroke-width="44"/>
+    </g>
+    <circle cx="512" cy="560" r="38" fill="#3fb950"/>
+    <circle cx="512" cy="560" r="15" fill="#0d1117"/>
+  </g>
+
+  <!-- soft top edge highlight -->
+  <rect x="42" y="42" width="940" height="940" rx="230" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="4"/>
+</svg>
