@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Button, Checkbox, Flash, Label, SegmentedControl, Select } from '@primer/react'
-import { DownloadIcon, FileDirectoryIcon, MarkGithubIcon } from '@primer/octicons-react'
+import { BellIcon, DownloadIcon, FileDirectoryIcon, MarkGithubIcon } from '@primer/octicons-react'
 import { Link } from 'react-router'
 import type { ThemeSetting } from '@shared/types'
 import { api } from '../api'
@@ -12,12 +12,15 @@ import { ErrorFlash } from '../components/common'
 const THEMES: ThemeSetting[] = ['system', 'light', 'dark', 'dark_dimmed']
 const POLL_SECONDS = [2, 5, 10, 15, 30]
 const IDLE_MINUTES = [1, 2, 3, 5, 10, 15, 30]
+const REMIND_MINUTES = [0, 5, 10, 15, 30]
 const REPO_URL = 'https://github.com/mistereshka/timehub'
 
 export function SettingsPage(): ReactNode {
   const { settings, updateSettings, meta } = useApp()
   const { t } = useI18n()
   const [exported, setExported] = useState<string | null>(null)
+  const [tested, setTested] = useState<boolean | null>(null)
+  const testReminder = useAction(async () => setTested(await api.testReminder()))
   const exportData = useAction(async (format: 'json' | 'csv') => {
     const path = await api.exportData(format)
     if (path) setExported(path)
@@ -93,6 +96,34 @@ export function SettingsPage(): ReactNode {
         title={t('settings.closeToTray')}
         hint={t('settings.closeToTrayHint')}
       />
+
+      <h2 className="subhead">{t('settings.reminders')}</h2>
+      <CheckRow
+        checked={settings.reminders}
+        onChange={(v) => updateSettings({ reminders: v })}
+        title={t('settings.remindersOn')}
+        hint={t('settings.remindersHint')}
+      />
+      <SettingRow title={t('settings.remindBefore')}>
+        <Select
+          value={String(settings.remindBeforeMin)}
+          disabled={!settings.reminders}
+          onChange={(e) => void updateSettings({ remindBeforeMin: Number(e.target.value) })}
+        >
+          {REMIND_MINUTES.map((m) => (
+            <Select.Option key={m} value={String(m)}>
+              {m === 0 ? t('settings.remindAtStart') : t('settings.remindMin', { n: m })}
+            </Select.Option>
+          ))}
+        </Select>
+      </SettingRow>
+      <div className="row row-wrap mt-2">
+        <Button leadingVisual={BellIcon} disabled={!settings.reminders || testReminder.busy} onClick={() => void testReminder.run()}>
+          {t('settings.remindTest')}
+        </Button>
+        {tested != null && <span className="small muted">{tested ? t('settings.remindTestSent') : t('settings.remindUnsupported')}</span>}
+      </div>
+      <ErrorFlash error={testReminder.error} />
 
       <h2 className="subhead">{t('settings.data')}</h2>
       <p className="muted">{t('settings.dataHint')}</p>

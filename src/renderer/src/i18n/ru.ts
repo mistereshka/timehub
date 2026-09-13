@@ -649,5 +649,21 @@ export const ru: Record<MessageKey, string> = {
   'lib.st.rewatching.listen': 'Переслушиваю',
   'lib.changeStatus': 'Изменить статус',
   'presence.watching': 'Смотрит в {app}',
-  'tracker.ignored': 'Не учитывается'
+  'tracker.ignored': 'Не учитывается',
+
+  'goals.plan': 'Регулярные занятия',
+  'goals.planHint': 'Станет повторяющейся задачей: появится в «Сегодня», «Планах» и «Расписании», а если указать время — придёт напоминание Windows.',
+  'goals.perDay': 'Сколько в день',
+  'goals.timeHint': 'Необязательно — со временем придёт напоминание.',
+  'goals.noDays': 'Выберите хотя бы один день',
+  'goals.noPlan': 'Расписания пока нет',
+  'settings.reminders': 'Напоминания',
+  'settings.remindersOn': 'Уведомления Windows',
+  'settings.remindersHint': 'Перед задачами со временем (и занятиями по целям) и событиями календаря. Клик по уведомлению открывает задачу.',
+  'settings.remindBefore': 'Когда напоминать',
+  'settings.remindAtStart': 'В момент начала',
+  'settings.remindMin': 'За {n} мин',
+  'settings.remindTest': 'Проверить уведомление',
+  'settings.remindTestSent': 'Отправлено — посмотрите в угол экрана.',
+  'settings.remindUnsupported': 'Уведомления работают только в приложении для Windows.'
 }

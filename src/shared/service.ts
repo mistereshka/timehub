@@ -94,7 +94,9 @@ export function defaultSettings(language: T.Lang): T.Settings {
     closeToTray: true,
     trackingPaused: false,
     heatmapMetric: 'active',
-    weekStartsOn: language === 'ru' ? 1 : 0
+    weekStartsOn: language === 'ru' ? 1 : 0,
+    reminders: true,
+    remindBeforeMin: 5
   }
 }
 

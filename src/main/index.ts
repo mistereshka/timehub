@@ -21,6 +21,7 @@ import { AniLibConnector } from './integrations/anilib'
 import { ShikimoriConnector } from './integrations/shikimori'
 import { TmdbConnector, searchLibrary } from './integrations/search'
 import { PresenceService } from './integrations/presence'
+import { Reminders } from './reminders'
 import appIcon from '../../resources/icon.png?asset'
 import trayIcon from '../../resources/tray.png?asset'
 import trayPausedIcon from '../../resources/tray-paused.png?asset'
@@ -107,6 +108,12 @@ async function main(): Promise<void> {
   // Recurring tasks that complete on target time, e.g. "English, 2 hours".
   every(30_000, () => service.checkTargets())
   every(5 * 60_000, () => service.refreshGamesInLibrary(), true)
+  // Windows notifications before timed tasks and events; a click opens the task.
+  const reminders = new Reminders(service, appIcon, (path) => {
+    showWindow()
+    void win?.webContents.executeJavaScript(`location.hash = ${JSON.stringify(`#${path}`)}`)
+  })
+  every(30_000, () => reminders.tick())
 
   const host: HostHandlers = {
     getMeta: () => ({ version: app.getVersion(), dataPath, demo: false, platform: process.platform, packaged: app.isPackaged }),
@@ -138,7 +145,8 @@ async function main(): Promise<void> {
     getSpotifyOverview: () =>
       connections.isEnabled('spotify') ? connections.get<SpotifyConnector>('spotify').overview(connections.env('spotify')) : null,
     searchLibrary: (kind, query) =>
-      searchLibrary(kind, query, { tmdbKey: connections.env('tmdb').secret('apiKey'), language: service.getSettings().language })
+      searchLibrary(kind, query, { tmdbKey: connections.env('tmdb').secret('apiKey'), language: service.getSettings().language }),
+    testReminder: () => reminders.test()
   }
   registerIpc(service, host)
 

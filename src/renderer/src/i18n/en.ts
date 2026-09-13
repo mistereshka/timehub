@@ -647,7 +647,23 @@ export const en = {
   'lib.st.rewatching.listen': 'Relistening',
   'lib.changeStatus': 'Change status',
   'presence.watching': 'Watching in {app}',
-  'tracker.ignored': 'Not tracked'
+  'tracker.ignored': 'Not tracked',
+
+  'goals.plan': 'Regular practice',
+  'goals.planHint': 'Becomes a recurring task: it shows up in Today, Plan and Schedule, and with a time you get a Windows reminder.',
+  'goals.perDay': 'Per day',
+  'goals.timeHint': 'Optional — with a time you also get a reminder.',
+  'goals.noDays': 'Pick at least one day',
+  'goals.noPlan': 'No schedule yet',
+  'settings.reminders': 'Reminders',
+  'settings.remindersOn': 'Windows notifications',
+  'settings.remindersHint': 'Before tasks with a time (goal practice included) and calendar events. A click opens the task.',
+  'settings.remindBefore': 'When to remind',
+  'settings.remindAtStart': 'When it starts',
+  'settings.remindMin': '{n} min before',
+  'settings.remindTest': 'Send a test notification',
+  'settings.remindTestSent': 'Sent — look at the corner of the screen.',
+  'settings.remindUnsupported': 'Notifications work only in the Windows app.'
 }
 
 export type MessageKey = keyof typeof en

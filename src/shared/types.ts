@@ -17,6 +17,10 @@ export interface Settings {
   heatmapMetric: HeatmapMetric
   /** 0 = Sunday (GitHub style), 1 = Monday */
   weekStartsOn: 0 | 1
+  /** Windows notifications before timed tasks and calendar events */
+  reminders: boolean
+  /** Minutes before the start; 0 = at the start */
+  remindBeforeMin: number
 }
 
 export interface Project {

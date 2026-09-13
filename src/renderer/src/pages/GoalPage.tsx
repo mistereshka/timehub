@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Checkbox, IconButton, Label, Textarea, Timeline, useConfirm } from '@primer/react'
-import { ArchiveIcon, GoalIcon, IssueReopenedIcon, NoteIcon, PencilIcon, TrashIcon, TrophyIcon } from '@primer/octicons-react'
+import { ArchiveIcon, BellIcon, GoalIcon, IssueReopenedIcon, NoteIcon, PencilIcon, SyncIcon, TrashIcon, TrophyIcon } from '@primer/octicons-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import type { Goal, GoalInput, GoalNote } from '@shared/types'
-import { addDays, dayKey, daysBetween, formatHM, todayKey } from '@shared/time'
+import { MINUTE, addDays, dayKey, daysBetween, formatHM, todayKey } from '@shared/time'
 import { buildHeatmap } from '@shared/heatmap'
 import { api } from '../api'
 import { useApp } from '../context'
 import { useAction, useQuery } from '../hooks'
 import { useI18n, type MessageKey } from '../i18n'
-import { dayLabel } from '../utils'
+import { dayLabel, ruleText } from '../utils'
 import { Blankslate, ErrorFlash, Markdown, Progress, ProgressSlider, StreakBadge } from '../components/common'
 import { GoalDialog } from '../components/GoalDialog'
 import { Heatmap } from '../components/Heatmap'
@@ -48,6 +48,8 @@ function GoalView({ goal }: { goal: Goal }): ReactNode {
   const entries = useQuery(() => api.listTimeEntries({ goalId: goal.id, withGoalTasks: true }), [goal.id], ['time'])
   const days = useQuery(() => api.getGoalDays(goal.id, addDays(today, -130), today), [goal.id, today], ['time'])
   const [editing, setEditing] = useState(false)
+  const recurrences = useQuery(() => api.listRecurrences(), [], ['meta'])
+  const practice = (recurrences.data ?? []).find((r) => r.goalId === goal.id && r.active)
   const update = useAction((patch: Partial<GoalInput>) => api.saveGoal({ id: goal.id, title: goal.title, ...patch }))
 
   const heat = days.data ? buildHeatmap(days.data, today, settings.weekStartsOn, 18) : null
@@ -181,6 +183,32 @@ function GoalView({ goal }: { goal: Goal }): ReactNode {
               <span className="grow muted">{t('goals.daysWorked')}</span>
               <span className="bold">{workedDays}</span>
             </div>
+          </div>
+          <div className="sidebar-section">
+            <div className="sidebar-heading">
+              {t('goals.plan')}
+              <button type="button" className="link-button small" onClick={() => setEditing(true)}>
+                {t('common.edit')}
+              </button>
+            </div>
+            {practice ? (
+              <div className="stack stack-sm small">
+                <Link to="/plan" className="row link-plain">
+                  <SyncIcon size={12} />
+                  {[ruleText(practice, i18n), practice.timeOfDay, practice.estimateMin ? duration(practice.estimateMin * MINUTE) : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Link>
+                {practice.timeOfDay && settings.reminders && (
+                  <span className="row muted">
+                    <BellIcon size={12} />
+                    {settings.remindBeforeMin > 0 ? t('settings.remindMin', { n: settings.remindBeforeMin }) : t('settings.remindAtStart')}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="small muted">{t('goals.noPlan')}</span>
+            )}
           </div>
           {heat && (
             <div className="sidebar-section">

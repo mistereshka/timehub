@@ -46,11 +46,13 @@ export interface HostApi {
   getSpotifyOverview(): SpotifyOverview | null
   /** Finds titles to add to the library (AniLib, Open Library, Steam, TMDB…). */
   searchLibrary(kind: LibraryKind, query: string): LibrarySearchResult[]
+  /** Shows a sample Windows notification; false when notifications aren't available. */
+  testReminder(): boolean
 }
 export const HOST_METHODS = [
   'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
   'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
-  'getSpotifyOverview', 'searchLibrary'
+  'getSpotifyOverview', 'searchLibrary', 'testReminder'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

@@ -162,6 +162,7 @@ export async function createDemoApi(): Promise<TimehubApi> {
           }
         : null,
     getSpotifyOverview: () => null,
+    testReminder: () => false,
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
