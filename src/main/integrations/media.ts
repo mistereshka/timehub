@@ -15,7 +15,7 @@ function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke(
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
 [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
 $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
-$last = ''; $lastTrack = ''; $beat = [DateTime]::MinValue
+$last = ''; $lastTrack = ''; $lastApp = ''; $beat = [DateTime]::MinValue
 while ($true) {
   try {
     # Not just the "current" session: Telegram or a paused tab can hold that spot while music plays
@@ -27,6 +27,10 @@ while ($true) {
       $score = 1 + [int][bool]$cp.AlbumTitle
       if ($score -gt $bestScore) { $s = $c; $bestScore = $score }
     }
+    if ($null -ne $s) { $lastApp = $s.SourceAppUserModelId }
+    # Nothing playing for a moment (buffering, seeking): stay with the last player instead of
+    # jumping to a paused Telegram, which would cut the track into pieces.
+    if ($null -eq $s -and $lastApp) { $s = @($mgr.GetSessions()) | Where-Object { $_.SourceAppUserModelId -eq $lastApp } | Select-Object -First 1 }
     if ($null -eq $s) { $s = $mgr.GetCurrentSession() }
     if ($null -eq $s) { $key = 'none'; $obj = @{ none = $true } }
     else {
@@ -110,9 +114,21 @@ export class MediaConnector implements Connector {
   private thumbnail: string | null = null
   readonly syncEveryMs = 30 * 60_000
   private readonly coverTried = new Set<number>()
+  private syncing = false
+  private lastRefresh = 0
 
   /** Turns the listening history into music in the library and looks up album covers. */
   async sync(env: Env): Promise<void> {
+    if (this.syncing) return
+    this.syncing = true
+    try {
+      await this.syncLibrary(env)
+    } finally {
+      this.syncing = false
+    }
+  }
+
+  private async syncLibrary(env: Env): Promise<void> {
     env.service.refreshMusicInLibrary()
     const missing = env.service
       .listLibrary({ kind: 'music' })
@@ -210,6 +226,11 @@ export class MediaConnector implements Connector {
       { at: now, source: msg.app, title: msg.title, artist: msg.artist ?? '', album: msg.album ?? '', playing, kind },
       HEARTBEAT_MS
     )
+    // New music shows up in the library within a minute, not at the next half-hourly sync.
+    if (kind === 'music' && playing && now - this.lastRefresh > 60_000) {
+      this.lastRefresh = now
+      void this.sync(env).catch(() => {})
+    }
     env.broadcast('tracker')
   }
 }

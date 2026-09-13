@@ -71,6 +71,24 @@ describe('library', () => {
     expect(mediaKind({ source: 'Telegram.TelegramDesktop', artist: 'Friend', album: '' })).toBe('video')
   })
 
+  it('counts a track cut by pauses as one play and shelves the album right away', () => {
+    const { svc, clock } = setup()
+    const t = clock.now - 10 * MINUTE
+    svc.seedMedia('Chrome', 'Выхода нет', 'Сплин', 'Гранатовый альбом', t, t + 6_000)
+    svc.seedMedia('Chrome', 'Выхода нет', 'Сплин', 'Гранатовый альбом', t + 20_000, t + 72_000)
+    svc.seedMedia('Chrome', 'Выхода нет', 'Сплин', 'Гранатовый альбом', t + 115_000, t + 125_000)
+    const music = svc.getMusic(t - MINUTE, clock.now)
+    expect(music.plays).toBe(1)
+    expect(music.topTracks[0]).toMatchObject({ title: 'Выхода нет', plays: 1, ms: 68_000 })
+    expect(svc.refreshMusicInLibrary()).toBe(1)
+    expect(svc.listLibrary({ kind: 'music' })[0]).toMatchObject({
+      title: 'Гранатовый альбом',
+      originalTitle: 'Сплин',
+      progress: 1,
+      status: 'active'
+    })
+  })
+
   it('turns a browser track into music when the album arrives a moment later', () => {
     const { svc, clock } = setup()
     const base = { source: 'Chrome', title: 'Группа крови', artist: 'Кино', playing: true }

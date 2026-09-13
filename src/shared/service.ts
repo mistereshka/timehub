@@ -80,6 +80,21 @@ interface OpenMedia extends OpenSpan {
 
 const MIN_SPAN_MS = 1000
 const MIN_MEDIA_MS = 5000
+/** Fragments of the same track closer than this (pause, buffering, seeking) are one listen. */
+const LISTEN_GAP_MS = 5 * MINUTE
+
+/** Ids of the rows that start a new listen; the rest continue the same track after a short break. */
+function listenStarts(rows: { id: T.ID; title: string; artist: string; start: number; end: number }[]): Set<T.ID> {
+  const lastEnd = new Map<string, number>()
+  const starts = new Set<T.ID>()
+  for (const r of [...rows].sort((a, b) => a.start - b.start)) {
+    const key = `${r.title}\u0000${r.artist}`
+    const prev = lastEnd.get(key)
+    if (prev == null || r.start - prev > LISTEN_GAP_MS) starts.add(r.id)
+    lastEnd.set(key, Math.max(prev ?? 0, r.end))
+  }
+  return starts
+}
 const MAX_TITLE_LENGTH = 300
 /** A day counts toward an app/game streak after this much use. */
 const STREAK_MIN_MS = 5 * MINUTE
@@ -1338,26 +1353,29 @@ export class Service {
     const artists = new Map<string, { ms: number; plays: number }>()
     const tracks = new Map<string, { title: string; artist: string; ms: number; plays: number }>()
     const sources = new Map<string, number>()
+    // A track cut into pieces by pauses or buffering is still one play.
+    const starts = listenStarts(rows)
     let totalMs = 0
     for (const m of rows) {
       const ms = clipDuration(m.start, m.end, from, to)
+      const play = starts.has(m.id) ? 1 : 0
       totalMs += ms
       if (m.artist) {
         const a = artists.get(m.artist) ?? { ms: 0, plays: 0 }
         a.ms += ms
-        a.plays++
+        a.plays += play
         artists.set(m.artist, a)
       }
       const key = `${m.title}\u0000${m.artist}`
       const t = tracks.get(key) ?? { title: m.title, artist: m.artist, ms: 0, plays: 0 }
       t.ms += ms
-      t.plays++
+      t.plays += play
       tracks.set(key, t)
       bump(sources, m.source, ms)
     }
     return {
       totalMs,
-      plays: rows.length,
+      plays: starts.size,
       topArtists: [...artists].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.ms - a.ms).slice(0, 10),
       topTracks: [...tracks.values()].sort((a, b) => b.ms - a.ms).slice(0, 10),
       bySource: [...sources].map(([source, ms]) => ({ source, ms })).sort((a, b) => b.ms - a.ms),
@@ -1604,15 +1622,31 @@ export class Service {
     const recent = now - 14 * DAY
     const stale = now - 30 * DAY
     const ru = this.getSettings().language === 'ru'
-    const rows = this.db.all(
-      `SELECT artist, album, COUNT(*) AS plays, SUM(end_ms - start_ms) AS ms, MAX(end_ms) AS last
-       FROM media_sessions WHERE kind = 'music' AND artist <> '' AND end_ms - start_ms >= 30000
-       GROUP BY lower(artist), lower(album)`
-    )
+    const sessions = this.db
+      .all(`SELECT id, title, artist, album, start_ms, end_ms FROM media_sessions WHERE kind = 'music' AND artist <> '' ORDER BY start_ms`)
+      .map((r) => ({
+        id: r.id as T.ID,
+        title: String(r.title),
+        artist: String(r.artist),
+        album: String(r.album),
+        start: Number(r.start_ms),
+        end: Number(r.end_ms)
+      }))
+    const starts = listenStarts(sessions)
+    const groups = new Map<string, { artist: string; album: string; plays: number; ms: number; last: number }>()
+    for (const s of sessions) {
+      const key = `${s.artist.toLowerCase()}|${s.album.toLowerCase()}`
+      const g = groups.get(key) ?? { artist: s.artist, album: s.album, plays: 0, ms: 0, last: 0 }
+      g.ms += s.end - s.start
+      g.last = Math.max(g.last, s.end)
+      if (starts.has(s.id)) g.plays++
+      groups.set(key, g)
+    }
     let changed = 0
     transaction(this.db, () => {
-      for (const r of rows) {
-        if (r.plays < 3 && r.ms < 10 * MINUTE) continue
+      for (const r of groups.values()) {
+        // Half a minute of an album is enough to put it on the shelf.
+        if (r.ms < 30_000) continue
         const artist = String(r.artist)
         const album = String(r.album)
         const externalId = `music:${artist.toLowerCase()}|${album.toLowerCase()}`.slice(0, 500)
