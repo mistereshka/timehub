@@ -48,9 +48,9 @@ export function taskProgress(task: Pick<Task, 'status' | 'progress' | 'childCoun
   return null
 }
 
-type Verb = 'watch' | 'read' | 'play'
+type Verb = 'watch' | 'read' | 'play' | 'listen'
 export const libraryVerb = (kind: LibraryKind): Verb =>
-  kind === 'manga' || kind === 'book' ? 'read' : kind === 'game' ? 'play' : 'watch'
+  kind === 'manga' || kind === 'book' ? 'read' : kind === 'game' ? 'play' : kind === 'music' ? 'listen' : 'watch'
 
 /** "Смотрю" / "Читаю" / "Играю" depending on what the item is. */
 export function libraryStatusLabel(status: LibraryStatus, kind: LibraryKind | null, t: I18n['t']): string {
@@ -67,8 +67,9 @@ export function libraryStatusLabel(status: LibraryStatus, kind: LibraryKind | nu
   }
 }
 
-/** Unit for progress numbers: episodes, chapters, pages, hours. */
-export const libraryUnit = (kind: LibraryKind, t: I18n['t']): string => t(`lib.unit.${kind}` as MessageKey)
+/** Unit for progress numbers: episodes, chapters, pages, hours, plays. RanobeLib counts chapters, not pages. */
+export const libraryUnit = (kind: LibraryKind, t: I18n['t'], source?: string): string =>
+  t(source === 'ranobelib' ? 'lib.unit.manga' : (`lib.unit.${kind}` as MessageKey))
 
 export function isTypingTarget(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null

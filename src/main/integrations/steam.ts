@@ -14,18 +14,40 @@ export interface SteamApp {
   installDir: string
 }
 
+interface SteamAccount {
+  steamId64: string
+  personaName: string
+  avatar: string | null
+  mostRecent: boolean
+}
+
+export interface Playtime {
+  minutes: number
+  /** ms */
+  lastPlayed: number
+}
+
 interface SteamLocal {
   steamPath: string
   apps: SteamApp[]
-  account: { steamId64: string; personaName: string; avatar: string | null } | null
-  /** appid → minutes played / last played (ms) */
-  playtime: Map<string, { minutes: number; lastPlayed: number }>
+  /** Every account that has signed in on this PC, the most recent first */
+  accounts: SteamAccount[]
+  /** appid → playtime summed over all accounts */
+  playtime: Map<string, Playtime>
+}
+
+/** The same game on several accounts: minutes add up, the latest session wins. */
+export function mergePlaytime(into: Map<string, Playtime>, appid: string, p: Playtime): void {
+  const cur = into.get(appid)
+  into.set(appid, cur ? { minutes: cur.minutes + p.minutes, lastPlayed: Math.max(cur.lastPlayed, p.lastPlayed) } : { ...p })
 }
 
 const STEAM_ID_BASE = 76561197960265728n
 const NOT_GAMES = /redistributable|runtime|proton|steamvr|soundtrack|dedicated server|\bsdk\b|steamworks|benchmark/i
 
 export const steamHeader = (appid: string): string => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`
+/** Vertical 600×900 library poster (the UI falls back to the header if a game has none). */
+export const steamCapsule = (appid: string): string => `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900.jpg`
 export const steamStore = (appid: string): string => `https://store.steampowered.com/app/${appid}/`
 
 const exists = (p: string): Promise<boolean> =>
@@ -83,34 +105,52 @@ export async function readSteamLocal(): Promise<SteamLocal | null> {
     }
   }
 
-  let account: SteamLocal['account'] = null
-  const playtime = new Map<string, { minutes: number; lastPlayed: number }>()
+  // Several people (or one person with alt accounts) can use the same Steam install.
+  const accounts: SteamAccount[] = []
+  const playtime = new Map<string, Playtime>()
+  let users: ReturnType<typeof vdfObject> = {}
   try {
-    const users = vdfObject(vdfGet(parseVdf(await readFile(join(steamPath, 'config', 'loginusers.vdf'), 'utf8')), 'users'))
-    const ids = Object.keys(users)
-    const steamId64 = ids.find((id) => vdfString(vdfGet(users[id], 'MostRecent')) === '1') ?? ids[0]
-    if (steamId64) {
-      let avatar: string | null = null
-      try {
-        const png = await readFile(join(steamPath, 'config', 'avatarcache', `${steamId64}.png`))
-        avatar = `data:image/png;base64,${png.toString('base64')}`
-      } catch {
-        // no cached avatar
-      }
-      account = { steamId64, personaName: vdfString(vdfGet(users[steamId64], 'PersonaName')) ?? 'Steam', avatar }
+    users = vdfObject(vdfGet(parseVdf(await readFile(join(steamPath, 'config', 'loginusers.vdf'), 'utf8')), 'users'))
+  } catch {
+    // account data is optional
+  }
+  for (const steamId64 of Object.keys(users)) {
+    let avatar: string | null = null
+    try {
+      const png = await readFile(join(steamPath, 'config', 'avatarcache', `${steamId64}.png`))
+      avatar = `data:image/png;base64,${png.toString('base64')}`
+    } catch {
+      // no cached avatar
+    }
+    accounts.push({
+      steamId64,
+      personaName: vdfString(vdfGet(users[steamId64], 'PersonaName')) ?? 'Steam',
+      avatar,
+      mostRecent: vdfString(vdfGet(users[steamId64], 'MostRecent')) === '1'
+    })
+    try {
       const accountId = (BigInt(steamId64) - STEAM_ID_BASE).toString()
       const local = parseVdf(await readFile(join(steamPath, 'userdata', accountId, 'config', 'localconfig.vdf'), 'utf8'))
       const appsNode = vdfObject(vdfGet(local, 'UserLocalConfigStore', 'Software', 'Valve', 'Steam', 'apps'))
       for (const [appid, node] of Object.entries(appsNode)) {
         const minutes = Number(vdfString(vdfGet(node, 'Playtime')) ?? 0)
         const lastPlayed = Number(vdfString(vdfGet(node, 'LastPlayed')) ?? 0) * 1000
-        if (minutes || lastPlayed) playtime.set(appid, { minutes, lastPlayed })
+        if (minutes || lastPlayed) mergePlaytime(playtime, appid, { minutes, lastPlayed })
       }
+    } catch {
+      // this account never played here
     }
-  } catch {
-    // account data is optional
   }
-  return { steamPath, apps, account, playtime }
+  accounts.sort((a, b) => Number(b.mostRecent) - Number(a.mostRecent))
+  return { steamPath, apps, accounts, playtime }
+}
+
+function ruPlural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10
+  const m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
 }
 
 function libraryStatus(minutes: number, lastPlayed: number): LibraryStatus {
@@ -141,21 +181,39 @@ export class SteamConnector implements Connector {
       throw new Error(env.language() === 'ru' ? 'Steam не найден на этом компьютере' : 'Steam is not installed on this computer')
     }
     const key = env.secret('apiKey')
-    const steamId = env.settings().steamId || this.local.account?.steamId64
-    let account = this.local.account?.personaName ?? null
-    let avatar = this.local.account?.avatar ?? null
+    // SteamIDs from the settings (comma-separated), otherwise every account signed in on this PC.
+    const configured = (env.settings().steamId ?? '').split(/[\s,;]+/).filter((s) => /^\d{17}$/.test(s))
+    const steamIds = configured.length ? configured : this.local.accounts.map((a) => a.steamId64)
+    let names = this.local.accounts.map((a) => a.personaName)
+    let avatar = this.local.accounts[0]?.avatar ?? null
     this.owned = null
-    if (key && steamId) {
-      const summary = await getJson(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(key)}&steamids=${steamId}`)
-      const player = summary?.response?.players?.[0]
-      if (player) {
-        account = player.personaname ?? account
-        avatar = player.avatarfull ?? avatar
-      }
-      const owned = await getJson(
-        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${encodeURIComponent(key)}&steamid=${steamId}&include_appinfo=1&include_played_free_games=1`
+    if (key && steamIds.length) {
+      const summary = await getJson(
+        `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(key)}&steamids=${steamIds.join(',')}`
       )
-      this.owned = (owned?.response?.games as OwnedGame[] | undefined) ?? []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const players: any[] = summary?.response?.players ?? []
+      if (players.length) {
+        names = steamIds.map((id) => players.find((p) => p.steamid === id)?.personaname).filter(Boolean)
+        avatar = players.find((p) => p.steamid === steamIds[0])?.avatarfull ?? avatar
+      }
+      const merged = new Map<number, OwnedGame>()
+      for (const id of steamIds) {
+        const owned = await getJson(
+          `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${encodeURIComponent(key)}&steamid=${id}&include_appinfo=1&include_played_free_games=1`
+        )
+        // Private profiles return nothing — their games still come from this PC below.
+        for (const g of (owned?.response?.games as OwnedGame[] | undefined) ?? []) {
+          const cur = merged.get(g.appid)
+          merged.set(
+            g.appid,
+            cur
+              ? { ...cur, playtime_forever: cur.playtime_forever + g.playtime_forever, rtime_last_played: Math.max(cur.rtime_last_played ?? 0, g.rtime_last_played ?? 0) }
+              : { ...g }
+          )
+        }
+      }
+      this.owned = [...merged.values()]
     }
 
     // Link tracked apps to their Steam entries by install folder.
@@ -170,28 +228,35 @@ export class SteamConnector implements Connector {
     }
 
     const items: LibraryImport[] = []
-    if (this.owned) {
-      for (const g of this.owned) {
-        const appid = String(g.appid)
-        if (NOT_GAMES.test(g.name)) continue
-        const lastPlayed = (g.rtime_last_played ?? 0) * 1000
-        items.push(this.item(appid, g.name, g.playtime_forever, lastPlayed, appIdBySteam.get(appid)))
-      }
-    } else {
-      for (const a of this.local.apps) {
-        if (NOT_GAMES.test(a.name)) continue
-        const p = this.local.playtime.get(a.appid)
-        items.push(this.item(a.appid, a.name, p?.minutes ?? 0, p?.lastPlayed ?? 0, appIdBySteam.get(a.appid)))
-      }
+    const seen = new Set<string>()
+    for (const g of this.owned ?? []) {
+      const appid = String(g.appid)
+      if (NOT_GAMES.test(g.name)) continue
+      seen.add(appid)
+      const lastPlayed = (g.rtime_last_played ?? 0) * 1000
+      items.push(this.item(appid, g.name, g.playtime_forever, lastPlayed, appIdBySteam.get(appid)))
+    }
+    // Installed games (with local playtime of every account) — also those of private profiles.
+    for (const a of this.local.apps) {
+      if (seen.has(a.appid) || NOT_GAMES.test(a.name)) continue
+      const p = this.local.playtime.get(a.appid)
+      items.push(this.item(a.appid, a.name, p?.minutes ?? 0, p?.lastPlayed ?? 0, appIdBySteam.get(a.appid)))
     }
     env.service.importLibrary('steam', items, { removeMissing: true })
     const hours = Math.round(items.reduce((s, i) => s + (i.progress ?? 0), 0))
     const ru = env.language() === 'ru'
+    const n = names.length
     env.setState({
       connected: true,
-      account,
+      account: names.join(', ') || null,
       avatar,
-      detail: ru ? `${items.length} игр · ${hours} ч в Steam` : `${items.length} games · ${hours} h on Steam`
+      detail: [
+        n > 1 ? (ru ? `${n} ${ruPlural(n, 'аккаунт', 'аккаунта', 'аккаунтов')}` : `${n} accounts`) : null,
+        ru ? `${items.length} ${ruPlural(items.length, 'игра', 'игры', 'игр')}` : `${items.length} games`,
+        ru ? `${hours} ч в Steam` : `${hours} h on Steam`
+      ]
+        .filter(Boolean)
+        .join(' · ')
     })
   }
 
@@ -200,7 +265,7 @@ export class SteamConnector implements Connector {
       kind: 'game',
       externalId: appid,
       title: name,
-      coverUrl: steamHeader(appid),
+      coverUrl: steamCapsule(appid),
       status: libraryStatus(minutes, lastPlayed),
       progress: Math.round(minutes / 60),
       url: steamStore(appid),

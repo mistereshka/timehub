@@ -585,7 +585,7 @@ export const ru: Record<MessageKey, string> = {
   'conn.group.library': 'Аниме, книги и фильмы',
   'conn.group.work': 'Работа и планы',
   'conn.steam.name': 'Steam',
-  'conn.steam.desc': 'Сам находит аккаунт, библиотеку и часы на этом ПК, онлайн игроков в карточке игры. API-ключ добавит всю библиотеку.',
+  'conn.steam.desc': 'Сам находит все аккаунты Steam на этом ПК, игры и часы (суммирует по аккаунтам), онлайн игроков в карточке игры. API-ключ добавит и неустановленные игры.',
   'conn.roblox.name': 'Roblox',
   'conn.roblox.desc': 'Показывает, в каком плейсе вы играете и сколько людей в нём онлайн.',
   'conn.epic.name': 'Epic Games',
@@ -607,7 +607,7 @@ export const ru: Record<MessageKey, string> = {
   'conn.calendar.name': 'Календари',
   'conn.calendar.desc': 'Google, Outlook, Яндекс или Apple по iCal-ссылке — события в «Сегодня», «Планах» и «Расписании».',
   'conn.field.steamKey': 'Steam Web API ключ (необязательно)',
-  'conn.field.steamId': 'SteamID64 (необязательно)',
+  'conn.field.steamId': 'SteamID64 — можно несколько через запятую (необязательно)',
   'conn.field.robloxUser': 'Ник в Roblox (необязательно)',
   'conn.field.spotifyClient': 'Client ID',
   'conn.field.discordApp': 'Application ID в Discord',
@@ -640,5 +640,14 @@ export const ru: Record<MessageKey, string> = {
   'conn.cal.empty': 'Календарей пока нет.',
   'conn.cal.name': 'Название',
   'conn.cal.url': 'iCal-ссылка (https://… .ics)',
-  'conn.cal.add': 'Добавить календарь'
+  'conn.cal.add': 'Добавить календарь',
+
+  'lib.kind.music': 'Музыка',
+  'lib.unit.music': 'прослуш.',
+  'lib.st.active.listen': 'Слушаю',
+  'lib.st.completed.listen': 'Прослушано',
+  'lib.st.rewatching.listen': 'Переслушиваю',
+  'lib.changeStatus': 'Изменить статус',
+  'presence.watching': 'Смотрит в {app}',
+  'tracker.ignored': 'Не учитывается'
 }

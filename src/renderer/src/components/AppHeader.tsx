@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, TextInput, UnderlineNav } from '@primer/react'
 import {
   BookIcon, CalendarIcon, ClockIcon, GearIcon, GoalIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlugIcon, PlusIcon, SearchIcon,
-  SquareFillIcon, SunIcon, UnmuteIcon
+  PlayIcon, SquareFillIcon, SunIcon, UnmuteIcon
 } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import type { RunningTimer } from '@shared/types'
@@ -101,6 +101,13 @@ function PresencePills(): ReactNode {
         <span className="muted">{duration(now - tracker.current.since)}</span>
       </>
     )
+  } else if (tracker.state === 'ignored') {
+    content = (
+      <>
+        <span className="live-dot off" />
+        {t('tracker.ignored')}
+      </>
+    )
   } else if (tracker.state === 'idle' || tracker.state === 'locked') {
     content = (
       <>
@@ -125,7 +132,7 @@ function PresencePills(): ReactNode {
         <HoverCard
           anchor={
             <span className="pill pill-music">
-              <UnmuteIcon size={14} />
+              {media.kind === 'video' ? <PlayIcon size={14} /> : <UnmuteIcon size={14} />}
               <span className="truncate">
                 {media.title}
                 {media.artist ? ` — ${media.artist}` : ''}

@@ -56,6 +56,59 @@ async function tmdb(kind: 'movie' | 'series', query: string, apiKey: string, lan
   }))
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ItunesAlbum = any
+
+const artwork = (a: ItunesAlbum): string | null =>
+  a.artworkUrl100 ? String(a.artworkUrl100).replace(/\/\d+x\d+bb\./, '/600x600bb.') : null
+
+async function itunesSearch(term: string, limit: number, country?: string): Promise<ItunesAlbum[]> {
+  const r = await getJson(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=album&limit=${limit}${country ? `&country=${country}` : ''}`
+  )
+  return r?.results ?? []
+}
+
+async function itunesAlbums(query: string, language: string): Promise<LibrarySearchResult[]> {
+  let list = await itunesSearch(query, 12)
+  if (!list.length && language === 'ru') list = await itunesSearch(query, 12, 'RU')
+  return list.map((a) => ({
+    kind: 'music' as const,
+    title: a.collectionName,
+    originalTitle: a.artistName ?? '',
+    coverUrl: artwork(a),
+    year: Number(String(a.releaseDate ?? '').slice(0, 4)) || null,
+    total: a.trackCount ?? null,
+    format: language === 'ru' ? 'Альбом' : 'Album',
+    url: a.collectionViewUrl ?? null,
+    source: 'itunes'
+  }))
+}
+
+const norm = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/\s*[-–(].*(single|ep|deluxe|remaster).*$/i, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+
+/** Album art for music the tracker heard: the best iTunes match for the artist (and album). */
+export async function itunesCover(artist: string, album: string): Promise<string | null> {
+  const a = norm(artist)
+  const b = norm(album)
+  if (!a) return null
+  for (const country of [undefined, 'RU']) {
+    const list = await itunesSearch(`${artist} ${album}`.trim(), 10, country)
+    const byArtist = list.filter((x) => {
+      const name = norm(x.artistName ?? '')
+      return name !== '' && (name.includes(a) || a.includes(name))
+    })
+    const hit = (b && byArtist.find((x) => norm(x.collectionName ?? '').includes(b))) || byArtist[0]
+    if (hit) return artwork(hit)
+  }
+  return null
+}
+
 /** TMDB only stores an API key for movie and series search. */
 export class TmdbConnector implements Connector {
   readonly key = 'tmdb' as const
@@ -95,5 +148,7 @@ export async function searchLibrary(
     case 'movie':
     case 'series':
       return opts.tmdbKey ? tmdb(kind, q, opts.tmdbKey, opts.language) : []
+    case 'music':
+      return itunesAlbums(q, opts.language)
   }
 }

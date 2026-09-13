@@ -31,7 +31,7 @@ const DEFS: Def[] = [
     key: 'steam', icon: '🎮', group: 'games',
     fields: [
       { name: 'apiKey', label: 'conn.field.steamKey', secret: true },
-      { name: 'steamId', label: 'conn.field.steamId', placeholder: '7656119…' }
+      { name: 'steamId', label: 'conn.field.steamId', placeholder: '7656119…, 7656119…' }
     ],
     help: { url: 'https://steamcommunity.com/dev/apikey', label: 'conn.help.steam' }
   },

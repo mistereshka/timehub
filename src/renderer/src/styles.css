@@ -1799,6 +1799,20 @@ body {
   align-items: center;
   gap: 8px;
 }
+.status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.status-button:hover {
+  text-decoration: underline;
+}
 .calendar-source {
   display: flex;
   align-items: center;

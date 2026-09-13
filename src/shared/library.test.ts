@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { openNodeDb } from '../main/db'
+import { mediaKind } from './media'
 import { Service } from './service'
 import { DAY, MINUTE } from './time'
 
@@ -60,5 +61,41 @@ describe('library', () => {
     clock.now += 31 * DAY
     svc.refreshGamesInLibrary()
     expect(svc.getLibraryItem(game.id)!.status).toBe('on_hold')
+  })
+
+  it('tells music from browser videos', () => {
+    expect(mediaKind({ source: 'Spotify.exe', artist: 'Daft Punk', album: '' })).toBe('music')
+    expect(mediaKind({ source: 'Chrome', artist: 'Some channel', album: '' })).toBe('video')
+    expect(mediaKind({ source: 'Chrome', artist: 'Daft Punk', album: 'Discovery' })).toBe('music')
+    expect(mediaKind({ source: 'MSEdge', artist: 'Daft Punk - Topic', album: '' })).toBe('music')
+  })
+
+  it('keeps videos out of music and turns listening into library items', () => {
+    const { svc, clock } = setup()
+    const start = clock.now - 3 * 60 * MINUTE
+    for (let i = 0; i < 3; i++) {
+      svc.seedMedia('Spotify.exe', `Track ${i}`, 'Daft Punk', 'Discovery', start + i * 5 * MINUTE, start + (i * 5 + 4) * MINUTE)
+    }
+    svc.seedMedia('Chrome', 'Funny short #shorts', 'Channel', '', start, start + 20_000, 'video')
+    const music = svc.getMusic(start - MINUTE, clock.now)
+    expect(music.plays).toBe(3)
+    expect(music.topArtists.map((a) => a.name)).toEqual(['Daft Punk'])
+
+    expect(svc.refreshMusicInLibrary()).toBe(1)
+    const [album] = svc.listLibrary({ kind: 'music' })
+    expect(album).toMatchObject({ title: 'Discovery', originalTitle: 'Daft Punk', status: 'active', progress: 3, source: 'tracker' })
+    expect(svc.refreshMusicInLibrary()).toBe(0)
+    clock.now += 31 * DAY
+    svc.refreshMusicInLibrary()
+    expect(svc.getLibraryItem(album.id)!.status).toBe('on_hold')
+  })
+
+  it('forgets its own app together with the history', () => {
+    const { svc, clock } = setup()
+    const { app } = svc.ensureApp('C:\\Apps\\timehub\\timehub.exe', 'timehub.exe', 'timehub')
+    svc.seedSession(app.id, 'timehub', clock.now - 10 * MINUTE, clock.now)
+    expect(svc.forgetApps({ names: ['timehub.exe'] })).toBe(1)
+    expect(svc.listApps().some((a) => a.id === app.id)).toBe(false)
+    expect(svc.getUsage(0, clock.now + 1).activeMs).toBe(0)
   })
 })

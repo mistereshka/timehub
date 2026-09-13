@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { mediaKind } from '@shared/media'
 import type { MediaPresence } from '@shared/types'
 import type { Connector, Env } from './connections'
+import { itunesCover } from './search'
 
 // Polls Windows' Global System Media Transport Controls (what shows in the volume flyout)
 // and prints one JSON line whenever the track or play state changes, plus a heartbeat.
@@ -97,6 +99,29 @@ export class MediaConnector implements Connector {
   private restartTimer: NodeJS.Timeout | null = null
   private stopped = true
   private thumbnail: string | null = null
+  readonly syncEveryMs = 30 * 60_000
+  private readonly coverTried = new Set<number>()
+
+  /** Turns the listening history into music in the library and looks up album covers. */
+  async sync(env: Env): Promise<void> {
+    env.service.refreshMusicInLibrary()
+    const missing = env.service
+      .listLibrary({ kind: 'music' })
+      .filter((i) => !i.coverUrl && i.source === 'tracker' && !this.coverTried.has(i.id))
+    // iTunes allows ~20 lookups a minute; the rest waits for the next sync.
+    for (const item of missing.slice(0, 15)) {
+      this.coverTried.add(item.id)
+      const artist = item.originalTitle || item.title
+      const album = item.originalTitle ? item.title : ''
+      try {
+        const url = await itunesCover(artist, album)
+        if (url) env.service.setLibraryCover(item.id, url)
+      } catch {
+        // retried after the next launch
+      }
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+  }
 
   start(env: Env): void {
     if (process.platform !== 'win32') return
@@ -158,6 +183,7 @@ export class MediaConnector implements Connector {
     if (msg.thumb) this.thumbnail = `data:image/png;base64,${msg.thumb}`
     else if (trackChanged) this.thumbnail = null
     const playing = msg.status === 'Playing'
+    const kind = mediaKind({ source: msg.app, artist: msg.artist ?? '', album: msg.album ?? '' })
     this.presence = {
       source: msg.app,
       sourceName: mediaSourceName(msg.app),
@@ -165,13 +191,14 @@ export class MediaConnector implements Connector {
       artist: msg.artist ?? '',
       album: msg.album ?? '',
       playing,
+      kind,
       positionMs: msg.duration ? (msg.position ?? null) : null,
       durationMs: msg.duration || null,
       updatedAt: now,
       thumbnail: this.thumbnail
     }
     env.service.recordMedia(
-      { at: now, source: msg.app, title: msg.title, artist: msg.artist ?? '', album: msg.album ?? '', playing },
+      { at: now, source: msg.app, title: msg.title, artist: msg.artist ?? '', album: msg.album ?? '', playing, kind },
       HEARTBEAT_MS
     )
     env.broadcast('tracker')

@@ -228,9 +228,24 @@ export function Cover({
   width?: number | string
   height?: number | string
 }): ReactNode {
-  const [failed, setFailed] = useState(false)
-  if (src && !failed) {
-    return <img className="cover" src={src} alt="" loading="lazy" style={{ width, height }} onError={() => setFailed(true)} draggable={false} />
+  // Steam's vertical poster doesn't exist for every game; the header image is the fallback.
+  const candidates = src ? [src, ...(src.includes('/library_600x900') ? [src.replace(/library_600x900[^/]*$/, 'header.jpg')] : [])] : []
+  const [failed, setFailed] = useState(0)
+  useEffect(() => setFailed(0), [src])
+  const current = candidates[failed]
+  if (current) {
+    return (
+      <img
+        key={current}
+        className="cover"
+        src={current}
+        alt=""
+        loading="lazy"
+        style={{ width, height }}
+        onError={() => setFailed((n) => n + 1)}
+        draggable={false}
+      />
+    )
   }
   const hue = [...title].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
   return (

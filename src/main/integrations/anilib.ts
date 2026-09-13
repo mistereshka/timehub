@@ -60,7 +60,8 @@ export function mapLibBookmark(b: LibBookmark, site: LibSite): LibraryImport | n
     latest,
     rating: typeof b.rating === 'number' ? b.rating : null,
     year: year ? Number(year) : null,
-    format: m.type?.label ?? '',
+    // For ranobe the "type" is the country of origin ("Япония"), so say what it is first.
+    format: site.source === 'ranobelib' ? ['Ранобэ', m.type?.label].filter(Boolean).join(' · ') : (m.type?.label ?? ''),
     url: m.slug_url ? `${site.base}/ru/${site.path}/${m.slug_url}` : null
   }
 }
@@ -114,7 +115,8 @@ const KIND_WORD: Record<LibraryKind, { ru: string; en: string }> = {
   book: { ru: 'ранобэ', en: 'novels' },
   movie: { ru: 'фильмов', en: 'movies' },
   series: { ru: 'сериалов', en: 'series' },
-  game: { ru: 'игр', en: 'games' }
+  game: { ru: 'игр', en: 'games' },
+  music: { ru: 'альбомов', en: 'albums' }
 }
 
 /** Title search on AniLib (anime) or MangaLib (manga). */

@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain, nativeTheme, powerMonitor, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, nativeTheme, powerMonitor, session, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HOST_METHODS, IPC_CHANGED, IPC_INVOKE, SERVICE_METHODS, type HostHandlers } from '@shared/api'
@@ -71,6 +71,8 @@ async function main(): Promise<void> {
   })
 
   const service = new Service(db, { language, onChange: broadcast })
+  // Looking at your own stats isn't activity: timehub never tracks itself.
+  service.forgetApps({ paths: [process.execPath], names: ['timehub.exe'] })
   const tracker = new Tracker(service, () => broadcast('tracker'))
 
   // Connections (Steam, Roblox, music, Spotify, GitHub, calendars, Discord, AniLib…)
@@ -139,6 +141,11 @@ async function main(): Promise<void> {
       searchLibrary(kind, query, { tmdbKey: connections.env('tmdb').secret('apiKey'), language: service.getSettings().language })
   }
   registerIpc(service, host)
+
+  // AniLib/MangaLib covers are hotlink-protected: the CDN answers 403 without their Referer.
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://*.cdnlibs.org/*', 'https://*.imglib.info/*'] }, (details, callback) => {
+    callback({ requestHeaders: { ...details.requestHeaders, Referer: 'https://anilib.me/' } })
+  })
 
   let lastPollInterval = service.getSettings().pollIntervalSec
   let lastPaused = service.getSettings().trackingPaused

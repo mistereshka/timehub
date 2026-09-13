@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Button, IconButton, LinkButton, TextInput } from '@primer/react'
-import { AppsIcon, HeartFillIcon, HeartIcon, ListUnorderedIcon, PlugIcon, PlusIcon, SearchIcon, SyncIcon } from '@primer/octicons-react'
+import { ActionList, ActionMenu, Button, IconButton, LinkButton, TextInput } from '@primer/react'
+import {
+  AppsIcon, HeartFillIcon, HeartIcon, ListUnorderedIcon, PlugIcon, PlusIcon, SearchIcon, SyncIcon, TriangleDownIcon
+} from '@primer/octicons-react'
 import { useSearchParams } from 'react-router'
 import type { LibraryItem, LibraryKind, LibraryStatus } from '@shared/types'
 import { api } from '../api'
@@ -15,8 +17,11 @@ const SORTS: SortKey[] = ['updated', 'name', 'rating', 'progress']
 const VIEW_KEY = 'timehub.library.view'
 
 const ratio = (i: LibraryItem): number => (i.total ? i.progress / i.total : i.progress > 0 ? 0.5 : 0)
+/** New episodes/chapters since you last caught up — only for things you've started. */
 const freshCount = (i: LibraryItem): number =>
-  i.latest != null && i.latest > i.progress && i.status !== 'completed' && i.status !== 'dropped' ? i.latest - i.progress : 0
+  i.latest != null && i.progress > 0 && i.latest > i.progress && ['active', 'rewatching', 'on_hold'].includes(i.status)
+    ? i.latest - i.progress
+    : 0
 
 function sortItems(list: LibraryItem[], sort: SortKey, dir: 'asc' | 'desc'): LibraryItem[] {
   const m = dir === 'asc' ? 1 : -1
@@ -86,7 +91,7 @@ export function LibraryPage(): ReactNode {
     sort,
     dir
   )
-  const syncable = (conns.data ?? []).filter((c) => ['anilib', 'shikimori', 'steam'].includes(c.key) && c.enabled && c.connected)
+  const syncable = (conns.data ?? []).filter((c) => ['anilib', 'shikimori', 'steam', 'media'].includes(c.key) && c.enabled && c.connected)
   const sync = useAction(async () => {
     for (const c of syncable) await api.syncConnection(c.key)
   })
@@ -246,14 +251,42 @@ function SideItem({
 function ProgressText({ item }: { item: LibraryItem }): ReactNode {
   const { t, duration } = useI18n()
   if (item.kind === 'game') return item.trackedMs > 0 ? <span>{t('lib.playedTime', { time: duration(item.trackedMs) })}</span> : null
-  const unit = libraryUnit(item.kind, t)
+  const unit = libraryUnit(item.kind, t, item.source)
   return <span>{item.total ? t('lib.progress', { n: item.progress, total: item.total, unit }) : t('lib.progressOpen', { n: item.progress, unit })}</span>
+}
+
+/** The status label doubles as a menu: one click to switch "Смотрю" → "Просмотрено". */
+function StatusMenu({ item }: { item: LibraryItem }): ReactNode {
+  const { t } = useI18n()
+  return (
+    <ActionMenu>
+      <ActionMenu.Anchor>
+        <button type="button" className={`status-button lib-status lib-status-${item.status}`} title={t('lib.changeStatus')}>
+          {libraryStatusLabel(item.status, item.kind, t)}
+          <TriangleDownIcon size={12} />
+        </button>
+      </ActionMenu.Anchor>
+      <ActionMenu.Overlay width="small">
+        <ActionList selectionVariant="single" aria-label={t('lib.changeStatus')}>
+          {LIBRARY_STATUSES.map((s) => (
+            <ActionList.Item
+              key={s}
+              selected={s === item.status}
+              onSelect={() => void api.saveLibraryItem({ id: item.id, kind: item.kind, title: item.title, status: s })}
+            >
+              {libraryStatusLabel(s, item.kind, t)}
+            </ActionList.Item>
+          ))}
+        </ActionList>
+      </ActionMenu.Overlay>
+    </ActionMenu>
+  )
 }
 
 function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): ReactNode {
   const { t, tn, ago } = useI18n()
   const fresh = freshCount(item)
-  const unit = libraryUnit(item.kind, t)
+  const unit = libraryUnit(item.kind, t, item.source)
   return (
     <div className="box-row hoverable lib-row">
       <button type="button" className="lib-cover-btn" onClick={onOpen}>
@@ -266,7 +299,7 @@ function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): Re
         </button>
         {item.originalTitle && item.originalTitle !== item.title && <div className="small muted truncate">{item.originalTitle}</div>}
         <div className="task-row-meta">
-          <span className={`lib-status lib-status-${item.status}`}>{libraryStatusLabel(item.status, item.kind, t)}</span>
+          <StatusMenu item={item} />
           <ProgressText item={item} />
           {fresh > 0 && <span className="fg-success">{tn('lib.new', fresh)}</span>}
           {(item.format || item.year) && <span>{[item.format, item.year].filter(Boolean).join(' · ')}</span>}

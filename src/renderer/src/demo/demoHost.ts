@@ -190,6 +190,7 @@ function trackPresence(i: number, startedAt: number): MediaPresence {
     artist: t.artist,
     album: t.album,
     playing: true,
+    kind: 'music',
     positionMs: 0,
     durationMs: t.sec * 1000,
     updatedAt: startedAt,

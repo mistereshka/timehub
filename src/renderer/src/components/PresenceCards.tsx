@@ -70,7 +70,7 @@ export function MusicCard({ media }: { media: MediaPresence }): ReactNode {
       : null
   return (
     <div className="presence-card">
-      <div className="presence-kicker">{t('presence.listening', { app: media.sourceName })}</div>
+      <div className="presence-kicker">{t(media.kind === 'video' ? 'presence.watching' : 'presence.listening', { app: media.sourceName })}</div>
       <div className="presence-main">
         {media.thumbnail ? (
           <img className="presence-art" src={media.thumbnail} alt="" draggable={false} />

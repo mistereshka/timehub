@@ -418,6 +418,9 @@ export interface GamePresence {
   platformPlaytimeMin: number | null
 }
 
+/** Browsers also report videos (YouTube, Shorts, Twitch) as media sessions. */
+export type MediaKind = 'music' | 'video'
+
 /** What's playing in Spotify, Yandex Music, a browser… (Windows media sessions). */
 export interface MediaPresence {
   source: string
@@ -426,6 +429,7 @@ export interface MediaPresence {
   artist: string
   album: string
   playing: boolean
+  kind: MediaKind
   positionMs: number | null
   durationMs: number | null
   updatedAt: number
@@ -496,7 +500,7 @@ export interface SpotifyOverview {
   recent: { title: string; artist: string; playedAt: number; image: string | null }[]
 }
 
-export type LibraryKind = 'anime' | 'manga' | 'book' | 'movie' | 'series' | 'game'
+export type LibraryKind = 'anime' | 'manga' | 'book' | 'movie' | 'series' | 'game' | 'music'
 /** active = watching / reading / playing, depending on the kind */
 export type LibraryStatus = 'active' | 'planned' | 'completed' | 'dropped' | 'on_hold' | 'rewatching'
 export type LibrarySource = 'manual' | 'anilib' | 'mangalib' | 'ranobelib' | 'shikimori' | 'steam' | 'tracker'

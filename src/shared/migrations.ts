@@ -266,6 +266,17 @@ export const MIGRATIONS: string[] = [
   CREATE UNIQUE INDEX library_items_source ON library_items(source, external_id) WHERE external_id IS NOT NULL;
   CREATE INDEX library_items_kind ON library_items(kind, status);
   CREATE INDEX library_items_app ON library_items(app_id);
+  `,
+  // v5: browsers report videos (YouTube, Shorts) as media too — keep them out of music stats.
+  // Mirrors mediaKind() in media.ts.
+  `
+  ALTER TABLE media_sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'music';
+  UPDATE media_sessions SET kind = 'video'
+    WHERE album = '' AND lower(artist) NOT LIKE '% - topic'
+      AND (lower(source) LIKE '%chrome%' OR lower(source) LIKE '%msedge%' OR lower(source) LIKE '%microsoftedge%'
+        OR lower(source) LIKE '%firefox%' OR lower(source) LIKE '%308046b0af4a39cb%' OR lower(source) LIKE '%opera%'
+        OR lower(source) LIKE '%brave%' OR lower(source) LIKE '%vivaldi%' OR lower(source) LIKE '%yandexbrowser%');
+  CREATE INDEX media_sessions_kind ON media_sessions(kind, start_ms);
   `
 ]
 

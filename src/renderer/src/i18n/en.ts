@@ -583,7 +583,7 @@ export const en = {
   'conn.group.library': 'Anime, books and movies',
   'conn.group.work': 'Work and plans',
   'conn.steam.name': 'Steam',
-  'conn.steam.desc': 'Finds your account, library and hours on this PC; players online in game cards. An API key adds your whole library.',
+  'conn.steam.desc': 'Finds every Steam account on this PC, your games and hours (added up across accounts); players online in game cards. An API key adds the games you haven’t installed.',
   'conn.roblox.name': 'Roblox',
   'conn.roblox.desc': 'Shows which experience you are in and how many people play it.',
   'conn.epic.name': 'Epic Games',
@@ -605,7 +605,7 @@ export const en = {
   'conn.calendar.name': 'Calendars',
   'conn.calendar.desc': 'Google, Outlook, Yandex or Apple calendars by their iCal link — events in Today, Plan and Schedule.',
   'conn.field.steamKey': 'Steam Web API key (optional)',
-  'conn.field.steamId': 'SteamID64 (optional)',
+  'conn.field.steamId': 'SteamID64 — several, comma-separated (optional)',
   'conn.field.robloxUser': 'Roblox username (optional)',
   'conn.field.spotifyClient': 'Client ID',
   'conn.field.discordApp': 'Discord Application ID',
@@ -638,7 +638,16 @@ export const en = {
   'conn.cal.empty': 'No calendars yet.',
   'conn.cal.name': 'Name',
   'conn.cal.url': 'iCal link (https://… .ics)',
-  'conn.cal.add': 'Add calendar'
+  'conn.cal.add': 'Add calendar',
+
+  'lib.kind.music': 'Music',
+  'lib.unit.music': 'plays',
+  'lib.st.active.listen': 'Listening',
+  'lib.st.completed.listen': 'Listened',
+  'lib.st.rewatching.listen': 'Relistening',
+  'lib.changeStatus': 'Change status',
+  'presence.watching': 'Watching in {app}',
+  'tracker.ignored': 'Not tracked'
 }
 
 export type MessageKey = keyof typeof en

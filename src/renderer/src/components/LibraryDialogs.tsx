@@ -9,9 +9,11 @@ import { useI18n, type MessageKey } from '../i18n'
 import { libraryStatusLabel, libraryUnit } from '../utils'
 import { Cover, ErrorFlash, Field } from './common'
 
-export const LIBRARY_KINDS: LibraryKind[] = ['anime', 'manga', 'book', 'movie', 'series', 'game']
+export const LIBRARY_KINDS: LibraryKind[] = ['anime', 'manga', 'book', 'movie', 'series', 'game', 'music']
 export const LIBRARY_STATUSES: LibraryStatus[] = ['active', 'planned', 'completed', 'on_hold', 'dropped', 'rewatching']
-export const KIND_EMOJI: Record<LibraryKind, string> = { anime: '📺', manga: '📖', book: '📚', movie: '🎬', series: '🎞️', game: '🎮' }
+export const KIND_EMOJI: Record<LibraryKind, string> = {
+  anime: '📺', manga: '📖', book: '📚', movie: '🎬', series: '🎞️', game: '🎮', music: '🎵'
+}
 
 const SOURCE_NAMES: Record<string, string> = {
   anilib: 'AniLib', mangalib: 'MangaLib', ranobelib: 'RanobeLib', shikimori: 'Shikimori', steam: 'Steam', tracker: 'timehub'
@@ -43,7 +45,7 @@ export function LibraryItemDialog({ item, kind, onClose }: { item: LibraryItem |
     await api.deleteLibraryItem(item.id)
     onClose()
   })
-  const unit = libraryUnit(form.kind, t)
+  const unit = libraryUnit(form.kind, t, item?.source)
   const num = (v: string): number | null => (v.trim() === '' ? null : Math.max(0, Math.round(Number(v)) || 0))
 
   return (

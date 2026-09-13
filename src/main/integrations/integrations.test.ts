@@ -3,6 +3,18 @@ import { parseVdf, vdfGet } from './vdf'
 import { parseRobloxLog } from './roblox'
 import { expandIcs } from './calendar'
 import { LIB_SITES, mapLibBookmark, parseLibUserId } from './anilib'
+import { mergePlaytime, type Playtime } from './steam'
+
+describe('steam accounts', () => {
+  it('adds up playtime of the same game across accounts', () => {
+    const map = new Map<string, Playtime>()
+    mergePlaytime(map, '570', { minutes: 600, lastPlayed: 1000 })
+    mergePlaytime(map, '730', { minutes: 30, lastPlayed: 500 })
+    mergePlaytime(map, '570', { minutes: 120, lastPlayed: 3000 })
+    expect(map.get('570')).toEqual({ minutes: 720, lastPlayed: 3000 })
+    expect(map.get('730')).toEqual({ minutes: 30, lastPlayed: 500 })
+  })
+})
 
 describe('vdf', () => {
   it('parses Steam key-values with escapes and nesting', () => {

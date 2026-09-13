@@ -103,6 +103,11 @@ export class Tracker {
     try {
       const fg = w.getForegroundWindow()
       if (!fg) return
+      // timehub itself is never tracked: looking at your stats isn't activity.
+      if (fg.pid === process.pid || (fg.exePath !== '' && fg.exePath.toLowerCase() === process.execPath.toLowerCase())) {
+        if (this.status.state !== 'ignored') this.stopActivity('ignored')
+        return
+      }
       if (fg.exeName.toLowerCase() === 'lockapp.exe') {
         this.stopActivity('locked')
         return

@@ -44,6 +44,8 @@ export interface MediaSample {
   artist: string
   album: string
   playing: boolean
+  /** Defaults to music */
+  kind?: T.MediaKind
 }
 
 export interface IntegrationRow {
@@ -72,6 +74,7 @@ interface OpenMedia extends OpenSpan {
   source: string
   title: string
   artist: string
+  kind: T.MediaKind
 }
 
 const MIN_SPAN_MS = 1000
@@ -1288,16 +1291,17 @@ export class Service {
       this.media = null
       return
     }
+    const kind = s.kind ?? 'music'
     const continuous = cur != null && s.at - cur.end <= maxGap
-    if (cur && continuous && cur.source === s.source && cur.title === s.title && cur.artist === s.artist) {
+    if (cur && continuous && cur.source === s.source && cur.title === s.title && cur.artist === s.artist && cur.kind === kind) {
       this.extendSpan('media_sessions', cur, s.at)
     } else {
       if (cur) this.finishMedia(cur, s.at, maxGap)
       const { lastId } = this.db.run(
-        'INSERT INTO media_sessions (source, title, artist, album, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)',
-        [s.source, s.title.slice(0, MAX_TITLE_LENGTH), s.artist.slice(0, MAX_TITLE_LENGTH), s.album.slice(0, MAX_TITLE_LENGTH), s.at, s.at]
+        'INSERT INTO media_sessions (source, title, artist, album, kind, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [s.source, s.title.slice(0, MAX_TITLE_LENGTH), s.artist.slice(0, MAX_TITLE_LENGTH), s.album.slice(0, MAX_TITLE_LENGTH), kind, s.at, s.at]
       )
-      this.media = { id: lastId, source: s.source, title: s.title, artist: s.artist, start: s.at, end: s.at }
+      this.media = { id: lastId, source: s.source, title: s.title, artist: s.artist, kind, start: s.at, end: s.at }
     }
     this.notify('music')
   }
@@ -1314,14 +1318,14 @@ export class Service {
   }
 
   /** Inserts a finished listening session directly (demo data). */
-  seedMedia(source: string, title: string, artist: string, album: string, start: number, end: number): void {
-    this.db.run('INSERT INTO media_sessions (source, title, artist, album, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)', [
-      source, title, artist, album, start, end
+  seedMedia(source: string, title: string, artist: string, album: string, start: number, end: number, kind: T.MediaKind = 'music'): void {
+    this.db.run('INSERT INTO media_sessions (source, title, artist, album, kind, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+      source, title, artist, album, kind, start, end
     ])
   }
 
   getMusic(from: number, to: number): T.MusicSummary {
-    const rows = this.db.all('SELECT * FROM media_sessions WHERE end_ms > ? AND start_ms < ? ORDER BY start_ms DESC', [from, to]).map(toMedia)
+    const rows = this.db.all("SELECT * FROM media_sessions WHERE kind = 'music' AND end_ms > ? AND start_ms < ? ORDER BY start_ms DESC", [from, to]).map(toMedia)
     const artists = new Map<string, { ms: number; plays: number }>()
     const tracks = new Map<string, { title: string; artist: string; ms: number; plays: number }>()
     const sources = new Map<string, number>()
@@ -1500,7 +1504,8 @@ export class Service {
           kind: it.kind, title: it.title, original_title: it.originalTitle ?? row.original_title, cover_url: it.coverUrl ?? row.cover_url,
           total: it.total ?? row.total, latest: it.latest ?? row.latest, year: it.year ?? row.year, format: it.format ?? row.format,
           url: it.url ?? row.url, app_id: it.appId ?? row.app_id,
-          status: auto ? status : row.status, favorite: auto ? favorite : row.favorite, progress: auto ? progress : row.progress,
+          // A status you set by hand sticks, but episodes/chapters keep coming from the service.
+          status: auto ? status : row.status, favorite: auto ? favorite : row.favorite, progress: auto ? progress : Math.max(Number(row.progress), progress),
           rating: auto ? (it.rating ?? row.rating) : row.rating
         }
         const changed = (Object.keys(next) as (keyof typeof next)[]).some((k) => (next[k] ?? null) !== (row[k] ?? null))
@@ -1578,6 +1583,86 @@ export class Service {
     })
     if (changed) this.notify('library')
     return changed
+  }
+
+  /**
+   * Albums (or artists, when the player reports no album) you listen to become
+   * music items: played in the last two weeks → "listening", untouched for a
+   * month → "on hold". Progress is the number of plays.
+   */
+  refreshMusicInLibrary(): number {
+    const now = this.now()
+    const recent = now - 14 * DAY
+    const stale = now - 30 * DAY
+    const ru = this.getSettings().language === 'ru'
+    const rows = this.db.all(
+      `SELECT artist, album, COUNT(*) AS plays, SUM(end_ms - start_ms) AS ms, MAX(end_ms) AS last
+       FROM media_sessions WHERE kind = 'music' AND artist <> '' AND end_ms - start_ms >= 30000
+       GROUP BY lower(artist), lower(album)`
+    )
+    let changed = 0
+    transaction(this.db, () => {
+      for (const r of rows) {
+        if (r.plays < 3 && r.ms < 10 * MINUTE) continue
+        const artist = String(r.artist)
+        const album = String(r.album)
+        const externalId = `music:${artist.toLowerCase()}|${album.toLowerCase()}`.slice(0, 500)
+        const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [externalId])
+        if (!item) {
+          this.db.run(
+            `INSERT INTO library_items (kind, title, original_title, status, progress, format, source, external_id, status_auto,
+               created_at, updated_at, started_at)
+             VALUES ('music', ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
+            [
+              album || artist, album ? artist : '', r.last >= stale ? 'active' : 'on_hold', r.plays,
+              album ? (ru ? 'Альбом' : 'Album') : ru ? 'Исполнитель' : 'Artist', externalId, now, now, now
+            ]
+          )
+          changed++
+          continue
+        }
+        let status: string = item.status
+        if (bool(item.status_auto)) {
+          if (r.last >= recent && ['planned', 'on_hold', 'dropped'].includes(status)) status = 'active'
+          else if (r.last < stale && status === 'active') status = 'on_hold'
+        }
+        if (status !== item.status || Number(item.progress) !== r.plays) {
+          this.db.run('UPDATE library_items SET status = ?, progress = ?, updated_at = ? WHERE id = ?', [status, r.plays, now, item.id])
+          changed++
+        }
+      }
+    })
+    if (changed) this.notify('library')
+    return changed
+  }
+
+  /** Sets a cover found later (e.g. album art) without touching "recently updated". */
+  setLibraryCover(id: T.ID, url: string): void {
+    this.db.run('UPDATE library_items SET cover_url = ? WHERE id = ?', [url, id])
+    this.notify('library')
+  }
+
+  /** Removes apps that must never be tracked (timehub itself) together with their history. */
+  forgetApps(match: { paths?: string[]; names?: string[] }): number {
+    const paths = new Set((match.paths ?? []).map((p) => p.toLowerCase()))
+    const names = new Set((match.names ?? []).map((n) => n.toLowerCase()))
+    const ids = (this.db.all('SELECT id, exe_path, exe_name FROM apps') as { id: T.ID; exe_path: string; exe_name: string }[])
+      .filter((a) => paths.has(a.exe_path.toLowerCase()) || names.has(a.exe_name.toLowerCase()))
+      .map((a) => a.id)
+    if (!ids.length) return 0
+    transaction(this.db, () => {
+      for (const id of ids) {
+        this.db.run('DELETE FROM activity_sessions WHERE app_id = ?', [id])
+        this.db.run('DELETE FROM rules WHERE app_id = ?', [id])
+        this.db.run('DELETE FROM app_links WHERE app_id = ?', [id])
+        this.db.run('UPDATE library_items SET app_id = NULL WHERE app_id = ?', [id])
+        this.db.run('DELETE FROM apps WHERE id = ?', [id])
+      }
+    })
+    this.appCache.clear()
+    this.notify('meta')
+    this.notify('activity')
+    return ids.length
   }
 
   // --------------------------------------------------- connections & external
