@@ -10,15 +10,39 @@ import { AppIcon } from './common'
 
 const HOUR_PX = 56
 
-/** Vertical day view: app activity on the left lane, task time on the right. */
-export function DayTimeline({ day, sessions, entries }: { day: string; sessions: ActivitySession[]; entries: TimeEntry[] }): ReactNode {
+/** Something planned for the day: a calendar event or a task with a start time. */
+export interface PlanBlock {
+  key: string
+  title: string
+  start: number
+  end: number
+  color: string
+  kind: 'event' | 'task'
+}
+
+/** Vertical day view: app activity, tracked time and the plan (calendar + timed tasks). */
+export function DayTimeline({
+  day,
+  sessions,
+  entries,
+  plan = []
+}: {
+  day: string
+  sessions: ActivitySession[]
+  entries: TimeEntry[]
+  plan?: PlanBlock[]
+}): ReactNode {
   const { appById, categoryById } = useApp()
   const { t, duration } = useI18n()
   const now = useNow(30_000)
   const from = startOfDayMs(day)
   const isToday = day === todayKey(now)
 
-  const spans = [...sessions.map((s) => [s.start, s.end]), ...entries.map((e) => [e.start, e.end ?? now])].flat()
+  const spans = [
+    ...sessions.map((s) => [s.start, s.end]),
+    ...entries.map((e) => [e.start, e.end ?? now]),
+    ...plan.map((p) => [p.start, p.end])
+  ].flat()
   const minH = spans.length ? Math.floor((Math.max(from, Math.min(...spans)) - from) / HOUR) : 8
   const maxH = spans.length ? Math.ceil((Math.min(from + DAY, Math.max(...spans)) - from) / HOUR) : 20
   const firstHour = Math.max(0, Math.min(8, minH))
@@ -28,6 +52,20 @@ export function DayTimeline({ day, sessions, entries }: { day: string; sessions:
   const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i)
 
   const blocks = buildAgenda(sessions, { from, to: from + DAY, noiseMs: 0, mergeGapMs: MINUTE, minBlockMs: 0 })
+  const block = (key: string, start: number, end: number, color: string, tip: string, body: ReactNode, dashed = false): ReactNode => {
+    const top = y(start)
+    const h = Math.max(2, y(end) - top)
+    return (
+      <div
+        key={key}
+        className={`tl-block${dashed ? ' tl-plan' : ''}`}
+        title={tip}
+        style={{ top, height: h, borderColor: color, background: dashed ? undefined : `color-mix(in srgb, ${color} 16%, var(--bgColor-default))` }}
+      >
+        {h >= 18 && body}
+      </div>
+    )
+  }
 
   return (
     <div className="tl-wrap">
@@ -35,6 +73,7 @@ export function DayTimeline({ day, sessions, entries }: { day: string; sessions:
         <div className="lane-title" />
         <div className="lane-title">{t('schedule.laneApps')}</div>
         <div className="lane-title">{t('schedule.laneTasks')}</div>
+        <div className="lane-title">{t('schedule.lanePlan')}</div>
       </div>
       <div className="day-timeline" style={{ height: height + 12 }}>
         <div className="hours">
@@ -44,15 +83,13 @@ export function DayTimeline({ day, sessions, entries }: { day: string; sessions:
             </span>
           ))}
         </div>
-        {[0, 1].map((lane) => (
+        {[0, 1, 2].map((lane) => (
           <div key={lane} className="lane">
             {hours.map((h) => (
               <div key={h} className="hour-line" style={{ top: (h - firstHour) * HOUR_PX }} />
             ))}
             {lane === 0 &&
               blocks.map((b) => {
-                const top = y(b.start)
-                const h = Math.max(2, y(b.end) - top)
                 const app = appById.get(b.appId)
                 const cat = categoryById.get(b.categoryId)
                 const color = cat?.color ?? '#8b949e'
@@ -61,47 +98,51 @@ export function DayTimeline({ day, sessions, entries }: { day: string; sessions:
                   categoryName(cat, t),
                   ...b.titles.map((x) => `${x.title} — ${duration(x.ms)}`)
                 ].join('\n')
-                return (
-                  <div
-                    key={`${b.appId}-${b.start}`}
-                    className="tl-block"
-                    title={tip}
-                    style={{ top, height: h, borderColor: color, background: `color-mix(in srgb, ${color} 16%, var(--bgColor-default))` }}
-                  >
-                    {h >= 18 && (
-                      <>
-                        <AppIcon icon={app?.icon} name={app?.displayName ?? '?'} size={14} color={color} />
-                        <span className="truncate grow">{app?.displayName}</span>
-                        {h >= 18 && <span className="muted nowrap">{duration(b.activeMs)}</span>}
-                      </>
-                    )}
-                  </div>
+                return block(
+                  `${b.appId}-${b.start}`,
+                  b.start,
+                  b.end,
+                  color,
+                  tip,
+                  <>
+                    <AppIcon icon={app?.icon} name={app?.displayName ?? '?'} size={14} color={color} />
+                    <span className="truncate grow">{app?.displayName}</span>
+                    <span className="muted nowrap">{duration(b.activeMs)}</span>
+                  </>
                 )
               })}
             {lane === 1 &&
               entries.map((e) => {
                 const end = e.end ?? now
-                const top = y(e.start)
-                const h = Math.max(2, y(end) - top)
-                const color = e.end == null ? 'var(--fgColor-danger)' : 'var(--fgColor-accent)'
-                return (
-                  <div
-                    key={e.id}
-                    className="tl-block"
-                    title={`${formatHM(e.start)}–${formatHM(end)} · #${e.taskNumber} ${e.taskTitle} · ${duration(end - e.start)}`}
-                    style={{ top, height: h, borderColor: color, background: `color-mix(in srgb, ${color} 14%, var(--bgColor-default))` }}
-                  >
-                    {h >= 18 && (
-                      <>
-                        <span className="truncate grow">
-                          #{e.taskNumber} {e.taskTitle}
-                        </span>
-                        <span className="muted nowrap">{duration(end - e.start)}</span>
-                      </>
-                    )}
-                  </div>
+                const color = e.end == null ? 'var(--fgColor-danger)' : e.goalId != null ? 'var(--fgColor-done)' : 'var(--fgColor-accent)'
+                const label = e.taskNumber != null ? `#${e.taskNumber} ${e.title}` : `🎯 ${e.title}`
+                return block(
+                  `e${e.id}`,
+                  e.start,
+                  end,
+                  color,
+                  `${formatHM(e.start)}–${formatHM(end)} · ${label} · ${duration(end - e.start)}`,
+                  <>
+                    <span className="truncate grow">{label}</span>
+                    <span className="muted nowrap">{duration(end - e.start)}</span>
+                  </>
                 )
               })}
+            {lane === 2 &&
+              plan.map((p) =>
+                block(
+                  p.key,
+                  p.start,
+                  p.end,
+                  p.color,
+                  `${formatHM(p.start)}–${formatHM(p.end)} · ${p.title}`,
+                  <>
+                    <span className="truncate grow">{p.title}</span>
+                    <span className="muted nowrap">{formatHM(p.start)}</span>
+                  </>,
+                  true
+                )
+              )}
           </div>
         ))}
         {isToday && now - from >= firstHour * HOUR && <div className="now-line" style={{ top: y(now) }} />}

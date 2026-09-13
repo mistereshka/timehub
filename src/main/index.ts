@@ -4,10 +4,23 @@ import { join } from 'node:path'
 import { HOST_METHODS, IPC_CHANGED, IPC_INVOKE, SERVICE_METHODS, type HostHandlers } from '@shared/api'
 import { Service } from '@shared/service'
 import { todayKey } from '@shared/time'
-import type { ChangeTopic, Lang } from '@shared/types'
+import type { ChangeTopic, Lang, TrackerStatus } from '@shared/types'
 import { openNodeDb } from './db'
 import { Tracker } from './tracker/tracker'
 import { createTray } from './tray'
+import { Connections } from './integrations/connections'
+import { SteamConnector } from './integrations/steam'
+import { RobloxConnector } from './integrations/roblox'
+import { MediaConnector } from './integrations/media'
+import { SpotifyConnector } from './integrations/spotify'
+import { GitHubConnector } from './integrations/github'
+import { CalendarConnector } from './integrations/calendar'
+import { DiscordConnector } from './integrations/discord'
+import { EpicConnector } from './integrations/epic'
+import { AniLibConnector } from './integrations/anilib'
+import { ShikimoriConnector } from './integrations/shikimori'
+import { TmdbConnector, searchLibrary } from './integrations/search'
+import { PresenceService } from './integrations/presence'
 import appIcon from '../../resources/icon.png?asset'
 import trayIcon from '../../resources/tray.png?asset'
 import trayPausedIcon from '../../resources/tray-paused.png?asset'
@@ -31,6 +44,19 @@ function showWindow(): void {
   win.focus()
 }
 
+/** Runs a periodic job, logging instead of crashing on errors. */
+function every(ms: number, job: () => void, runNow = false): void {
+  const safe = (): void => {
+    try {
+      job()
+    } catch (err) {
+      console.error(err)
+    }
+  }
+  if (runNow) safe()
+  setInterval(safe, ms)
+}
+
 async function main(): Promise<void> {
   app.setAppUserModelId('io.github.mistereshka.timehub')
   const dataPath = app.getPath('userData')
@@ -47,13 +73,42 @@ async function main(): Promise<void> {
   const service = new Service(db, { language, onChange: broadcast })
   const tracker = new Tracker(service, () => broadcast('tracker'))
 
+  // Connections (Steam, Roblox, music, Spotify, GitHub, calendars, Discord, AniLib…)
+  const connections = new Connections(service, broadcast)
+  const media = new MediaConnector()
+  connections.register(
+    new SteamConnector(),
+    new RobloxConnector(),
+    media,
+    new SpotifyConnector(),
+    new GitHubConnector(),
+    new CalendarConnector(),
+    new DiscordConnector(() => ({ timer: service.getRunningTimer(), tracker: tracker.getStatus() })),
+    new EpicConnector(),
+    new AniLibConnector(),
+    new ShikimoriConnector(),
+    new TmdbConnector()
+  )
+  const presence = new PresenceService(service, connections, () => broadcast('tracker'))
+  const trackerStatus = (): TrackerStatus => {
+    const s = tracker.getStatus()
+    return {
+      ...s,
+      games: presence.decorate(s.games, tracker.getRunningGames()),
+      media: connections.isEnabled('media') ? media.presence : null
+    }
+  }
+
   service.generateRecurring()
   scheduleMidnight(() => service.generateRecurring())
   powerMonitor.on('resume', () => service.generateRecurring())
+  // Recurring tasks that complete on target time, e.g. "English, 2 hours".
+  every(30_000, () => service.checkTargets())
+  every(5 * 60_000, () => service.refreshGamesInLibrary(), true)
 
   const host: HostHandlers = {
     getMeta: () => ({ version: app.getVersion(), dataPath, demo: false, platform: process.platform, packaged: app.isPackaged }),
-    getTrackerStatus: () => tracker.getStatus(),
+    getTrackerStatus: () => trackerStatus(),
     exportData: async (format) => {
       const { canceled, filePath } = await dialog.showSaveDialog(win!, {
         defaultPath: `timehub-${todayKey()}.${format}`,
@@ -67,7 +122,21 @@ async function main(): Promise<void> {
     setTitleBarTheme: (colors) => win?.setTitleBarOverlay({ ...colors, height: TITLEBAR_HEIGHT }),
     openExternal: (url) => {
       if (url.startsWith('https://')) void shell.openExternal(url)
-    }
+    },
+    listConnections: () => connections.list(),
+    updateConnection: (key, patch) => connections.update(key, patch),
+    syncConnection: (key) => connections.sync(key),
+    connectSpotify: async () => {
+      await connections.update('spotify', { enabled: true })
+      await connections.get<SpotifyConnector>('spotify').login(connections.env('spotify'))
+      return connections.status('spotify')
+    },
+    disconnectConnection: (key) => connections.disconnect(key),
+    getGameInfo: (appId) => presence.gameInfo(appId),
+    getSpotifyOverview: () =>
+      connections.isEnabled('spotify') ? connections.get<SpotifyConnector>('spotify').overview(connections.env('spotify')) : null,
+    searchLibrary: (kind, query) =>
+      searchLibrary(kind, query, { tmdbKey: connections.env('tmdb').secret('apiKey'), language: service.getSettings().language })
   }
   registerIpc(service, host)
 
@@ -97,11 +166,14 @@ async function main(): Promise<void> {
 
   app.on('before-quit', () => {
     quitting = true
+    connections.stopAll()
+    service.closeMedia(Date.now())
     tracker.stop()
     db.close()
   })
 
   await tracker.start()
+  await connections.startAll()
 }
 
 function createWindow(closeToTray: () => boolean): BrowserWindow {

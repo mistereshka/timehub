@@ -7,6 +7,10 @@ import { useAction, useQuery } from '../hooks'
 import { useI18n } from '../i18n'
 import { categoryName } from '../utils'
 import { ErrorFlash, Field } from './common'
+import { GoalSelect } from './TaskForm'
+
+type Target = 'category' | 'task' | 'goal'
+const TARGETS: Target[] = ['category', 'task', 'goal']
 
 export function RuleDialog({ onClose }: { onClose(): void }): ReactNode {
   const { apps, categories } = useApp()
@@ -14,15 +18,18 @@ export function RuleDialog({ onClose }: { onClose(): void }): ReactNode {
   const tasks = useQuery(() => api.listTasks({ status: 'open' }), [])
   const [appId, setAppId] = useState<ID | null>(null)
   const [pattern, setPattern] = useState('')
-  const [target, setTarget] = useState<'category' | 'task'>('category')
+  const [target, setTarget] = useState<Target>('category')
   const [categoryId, setCategoryId] = useState<ID | null>(categories[0]?.id ?? null)
   const [taskId, setTaskId] = useState<ID | null>(null)
-  const valid = (appId != null || pattern.trim() !== '') && (target === 'category' ? categoryId != null : taskId != null)
+  const [goalId, setGoalId] = useState<ID | null>(null)
+  const chosen = target === 'category' ? categoryId : target === 'task' ? taskId : goalId
+  const valid = (appId != null || pattern.trim() !== '') && chosen != null
   const save = useAction(async () => {
     await api.saveRule({
       appId,
       titlePattern: pattern,
       taskId: target === 'task' ? taskId : null,
+      goalId: target === 'goal' ? goalId : null,
       categoryId: target === 'category' ? categoryId : null
     })
     onClose()
@@ -56,12 +63,13 @@ export function RuleDialog({ onClose }: { onClose(): void }): ReactNode {
         </Field>
         <div className="form-field">
           <span className="form-label">{t('rules.then')}</span>
-          <SegmentedControl aria-label={t('rules.then')} size="small" onChange={(i) => setTarget(i === 0 ? 'category' : 'task')}>
+          <SegmentedControl aria-label={t('rules.then')} size="small" onChange={(i) => setTarget(TARGETS[i])}>
             <SegmentedControl.Button selected={target === 'category'}>{t('rules.setCategory')}</SegmentedControl.Button>
             <SegmentedControl.Button selected={target === 'task'}>{t('rules.trackTask')}</SegmentedControl.Button>
+            <SegmentedControl.Button selected={target === 'goal'}>{t('rules.trackGoal')}</SegmentedControl.Button>
           </SegmentedControl>
         </div>
-        {target === 'category' ? (
+        {target === 'category' && (
           <Field label={t('activity.category')}>
             <Select block value={String(categoryId ?? '')} onChange={(e) => setCategoryId(Number(e.target.value))}>
               {categories.map((c) => (
@@ -71,7 +79,8 @@ export function RuleDialog({ onClose }: { onClose(): void }): ReactNode {
               ))}
             </Select>
           </Field>
-        ) : (
+        )}
+        {target === 'task' && (
           <Field label={t('rules.task')} hint={t('rules.taskHint')}>
             <Select block value={taskId == null ? '' : String(taskId)} onChange={(e) => setTaskId(e.target.value ? Number(e.target.value) : null)}>
               <Select.Option value="">—</Select.Option>
@@ -81,6 +90,11 @@ export function RuleDialog({ onClose }: { onClose(): void }): ReactNode {
                 </Select.Option>
               ))}
             </Select>
+          </Field>
+        )}
+        {target === 'goal' && (
+          <Field label={t('rules.goal')} hint={t('rules.taskHint')}>
+            <GoalSelect block value={goalId} onChange={setGoalId} />
           </Field>
         )}
       </div>

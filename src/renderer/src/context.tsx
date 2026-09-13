@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import type { AppInfo, AppMeta, Category, Label, Project, RunningTimer, Settings, TaskInput, TrackerStatus } from '@shared/types'
+import type { AppInfo, AppMeta, Category, Goal, Label, Project, RunningTimer, Settings, TaskInput, TrackerStatus } from '@shared/types'
 import { api } from './api'
 import { useQuery } from './hooks'
 import { I18nProvider } from './i18n'
@@ -11,6 +11,8 @@ export interface AppData {
   projects: Project[]
   categories: Category[]
   apps: AppInfo[]
+  goals: Goal[]
+  goalById: Map<number, Goal>
   labelById: Map<number, Label>
   projectById: Map<number, Project>
   categoryById: Map<number, Category>
@@ -27,7 +29,7 @@ export interface AppData {
 
 const AppContext = createContext<AppData | null>(null)
 const byId = <T extends { id: number }>(list: T[]): Map<number, T> => new Map(list.map((x) => [x.id, x]))
-const TRACKER_OFF: TrackerStatus = { supported: false, state: 'off', current: null, games: [] }
+const TRACKER_OFF: TrackerStatus = { supported: false, state: 'off', current: null, games: [], media: null }
 
 /** App-wide data (settings, labels, projects, apps, timer, tracker) kept fresh via change events. */
 export function AppProvider({ children }: { children: ReactNode }): ReactNode {
@@ -37,6 +39,7 @@ export function AppProvider({ children }: { children: ReactNode }): ReactNode {
   const projects = useQuery(() => api.listProjects(), [], ['meta'])
   const categories = useQuery(() => api.listCategories(), [], ['meta'])
   const apps = useQuery(() => api.listApps(), [], ['meta'])
+  const goals = useQuery(() => api.listGoals(), [], ['goals', 'time'])
   const timer = useQuery(() => api.getRunningTimer(), [], ['time', 'tasks'])
   const tracker = useQuery(() => api.getTrackerStatus(), [], ['tracker'])
   const openCount = useQuery(async () => (await api.listTasks({ status: 'open' })).length, [], ['tasks'])
@@ -57,6 +60,8 @@ export function AppProvider({ children }: { children: ReactNode }): ReactNode {
       projects: projects.data,
       categories: categories.data,
       apps: apps.data,
+      goals: goals.data ?? [],
+      goalById: byId(goals.data ?? []),
       labelById: byId(labels.data),
       projectById: byId(projects.data),
       categoryById: byId(categories.data),
@@ -70,7 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }): ReactNode {
       closeNewTask
     }
   }, [
-    settings.data, meta.data, labels.data, projects.data, categories.data, apps.data, timer.data, tracker.data,
+    settings.data, meta.data, labels.data, projects.data, categories.data, apps.data, goals.data, timer.data, tracker.data,
     openCount.data, newTask, updateSettings, openNewTask, closeNewTask
   ])
 

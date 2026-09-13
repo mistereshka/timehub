@@ -18,6 +18,11 @@ import { LabelsPage } from './pages/LabelsPage'
 import { SchedulePage } from './pages/SchedulePage'
 import { ActivityPage } from './pages/ActivityPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { GoalsPage } from './pages/GoalsPage'
+import { GoalPage } from './pages/GoalPage'
+import { LibraryPage } from './pages/LibraryPage'
+import { AppReportPage } from './pages/AppReportPage'
+import { ConnectionsPage } from './pages/ConnectionsPage'
 
 export function App(): ReactNode {
   return (
@@ -91,6 +96,11 @@ function Shell(): ReactNode {
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/schedule/:date" element={<SchedulePage />} />
           <Route path="/activity" element={<ActivityPage />} />
+          <Route path="/activity/apps/:id" element={<AppReportPage />} />
+          <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/goals/:id" element={<GoalPage />} />
+          <Route path="/library" element={<LibraryPage />} />
+          <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

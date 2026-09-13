@@ -1,4 +1,4 @@
-import type { Category, Recurrence } from '@shared/types'
+import type { Category, LibraryKind, LibraryStatus, Recurrence, Task } from '@shared/types'
 import { addDays, todayKey } from '@shared/time'
 import type { I18n, MessageKey } from './i18n'
 
@@ -39,6 +39,36 @@ export function ruleText(rec: Pick<Recurrence, 'rule' | 'daysMask' | 'dayOfMonth
       return i18n.t('rule.monthlyOn', { day: rec.dayOfMonth ?? 1 })
   }
 }
+
+/** Completion percent to show, or null when the task has no progress to speak of. */
+export function taskProgress(task: Pick<Task, 'status' | 'progress' | 'childCount' | 'childDone'>): number | null {
+  if (task.status === 'closed') return 100
+  if (task.progress != null) return task.progress
+  if (task.childCount > 0) return Math.round((task.childDone / task.childCount) * 100)
+  return null
+}
+
+type Verb = 'watch' | 'read' | 'play'
+export const libraryVerb = (kind: LibraryKind): Verb =>
+  kind === 'manga' || kind === 'book' ? 'read' : kind === 'game' ? 'play' : 'watch'
+
+/** "Смотрю" / "Читаю" / "Играю" depending on what the item is. */
+export function libraryStatusLabel(status: LibraryStatus, kind: LibraryKind | null, t: I18n['t']): string {
+  const verb = kind ? libraryVerb(kind) : 'watch'
+  switch (status) {
+    case 'active':
+      return kind ? t(`lib.st.active.${verb}` as MessageKey) : t('lib.st.active.any')
+    case 'completed':
+      return kind ? t(`lib.st.completed.${verb}` as MessageKey) : t('lib.st.completed.any')
+    case 'rewatching':
+      return kind ? t(`lib.st.rewatching.${verb}` as MessageKey) : t('lib.st.rewatching.any')
+    default:
+      return t(`lib.st.${status}` as MessageKey)
+  }
+}
+
+/** Unit for progress numbers: episodes, chapters, pages, hours. */
+export const libraryUnit = (kind: LibraryKind, t: I18n['t']): string => t(`lib.unit.${kind}` as MessageKey)
 
 export function isTypingTarget(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null

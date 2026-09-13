@@ -49,7 +49,7 @@ export function createTray(o: TrayOptions): { refresh(): void } {
     const items: MenuItemConstructorOptions[] = [{ label: t.open, click: o.onOpen }, { type: 'separator' }]
     if (timer) {
       items.push({
-        label: `${t.stop}: #${timer.taskNumber} ${timer.taskTitle} (${formatClock(Date.now() - timer.start)})`,
+        label: `${t.stop}: ${timer.taskNumber != null ? `#${timer.taskNumber} ` : '🎯 '}${timer.title} (${formatClock(Date.now() - timer.start)})`,
         click: () => o.service.stopTimer()
       })
     } else {
@@ -87,7 +87,7 @@ export function createTray(o: TrayOptions): { refresh(): void } {
     const status = o.getStatus()
     const timer = o.service.getRunningTimer()
     const parts = ['timehub']
-    if (timer) parts.push(`⏱ #${timer.taskNumber} ${formatClock(Date.now() - timer.start)}`)
+    if (timer) parts.push(`⏱ ${timer.taskNumber != null ? `#${timer.taskNumber}` : timer.title} ${formatClock(Date.now() - timer.start)}`)
     if (settings.trackingPaused) parts.push(t.paused)
     else if (status.current) parts.push(`${status.current.displayName} · ${formatDuration(Date.now() - status.current.since, settings.language)}`)
     else if (status.state === 'idle' || status.state === 'locked') parts.push(t[status.state])

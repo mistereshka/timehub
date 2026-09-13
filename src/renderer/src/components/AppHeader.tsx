@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, TextInput, UnderlineNav } from '@primer/react'
 import {
-  CalendarIcon, ClockIcon, GearIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlusIcon, SearchIcon, SquareFillIcon, SunIcon
+  BookIcon, CalendarIcon, ClockIcon, GearIcon, GoalIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlugIcon, PlusIcon, SearchIcon,
+  SquareFillIcon, SunIcon, UnmuteIcon
 } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import type { RunningTimer } from '@shared/types'
@@ -11,7 +12,8 @@ import { useApp } from '../context'
 import { useNow } from '../hooks'
 import { useI18n, type MessageKey } from '../i18n'
 import { isTypingTarget } from '../utils'
-import { AppIcon } from './common'
+import { AppIcon, HoverCard } from './common'
+import { GameCard, MusicCard } from './PresenceCards'
 
 export function AppHeader(): ReactNode {
   const { t } = useI18n()
@@ -66,7 +68,7 @@ export function AppHeader(): ReactNode {
         />
       </form>
       <div className="app-spacer" />
-      <TrackerPills />
+      <PresencePills />
       {timer && <TimerPill timer={timer} />}
       <Button size="small" leadingVisual={PlusIcon} onClick={() => openNewTask()}>
         {t('header.newTask')}
@@ -75,7 +77,7 @@ export function AppHeader(): ReactNode {
   )
 }
 
-function TrackerPills(): ReactNode {
+function PresencePills(): ReactNode {
   const { t, duration } = useI18n()
   const { tracker, settings } = useApp()
   const now = useNow(15_000)
@@ -115,14 +117,36 @@ function TrackerPills(): ReactNode {
     )
   }
 
-  const game = tracker.games[0]
+  const game = settings.trackingPaused ? undefined : tracker.games[0]
+  const media = tracker.media?.playing ? tracker.media : null
   return (
     <>
-      {game && !settings.trackingPaused && (
-        <button type="button" className="pill" onClick={() => navigate('/activity')} title={t('tracker.gameRunning')}>
-          <AppIcon icon={game.icon} name={game.displayName} size={16} />
-          <span className="truncate">{t('tracker.playing', { name: game.displayName })}</span>
-        </button>
+      {media && (
+        <HoverCard
+          anchor={
+            <span className="pill pill-music">
+              <UnmuteIcon size={14} />
+              <span className="truncate">
+                {media.title}
+                {media.artist ? ` — ${media.artist}` : ''}
+              </span>
+            </span>
+          }
+        >
+          <MusicCard media={media} />
+        </HoverCard>
+      )}
+      {game && (
+        <HoverCard
+          anchor={
+            <button type="button" className="pill pill-game" onClick={() => navigate(`/activity/apps/${game.appId}`)}>
+              <AppIcon icon={game.icon} name={game.displayName} size={16} />
+              <span className="truncate">{t('tracker.playing', { name: game.details ?? game.displayName })}</span>
+            </button>
+          }
+        >
+          <GameCard game={game} />
+        </HoverCard>
       )}
       <button type="button" className="pill" onClick={() => navigate('/schedule')} title={tracker.current?.title || t('tracker.openSchedule')}>
         {content}
@@ -134,11 +158,12 @@ function TrackerPills(): ReactNode {
 function TimerPill({ timer }: { timer: RunningTimer }): ReactNode {
   const now = useNow(1000)
   const { t } = useI18n()
+  const to = timer.taskNumber != null ? `/tasks/${timer.taskNumber}` : `/goals/${timer.goalId}`
   return (
     <span className="pill pill-timer">
       <span className="live-dot rec" />
-      <Link to={`/tasks/${timer.taskNumber}`} className="link-plain truncate" title={timer.taskTitle}>
-        #{timer.taskNumber} {timer.taskTitle}
+      <Link to={to} className="link-plain truncate" title={timer.title}>
+        {timer.taskNumber != null ? `#${timer.taskNumber}` : '🎯'} {timer.title}
       </Link>
       <span className="mono">{formatClock(now - timer.start)}</span>
       <button type="button" className="pill-btn" onClick={() => void api.stopTimer()} aria-label={t('timer.stop')} title={t('timer.stop')}>
@@ -153,8 +178,11 @@ const NAV: { to: string; label: MessageKey; icon: typeof HomeIcon; exact?: boole
   { to: '/today', label: 'nav.today', icon: SunIcon },
   { to: '/plan', label: 'nav.plan', icon: CalendarIcon },
   { to: '/tasks', label: 'nav.tasks', icon: IssueOpenedIcon, counter: true, also: ['/labels'] },
+  { to: '/goals', label: 'nav.goals', icon: GoalIcon },
+  { to: '/library', label: 'nav.library', icon: BookIcon },
   { to: '/schedule', label: 'nav.schedule', icon: ClockIcon },
   { to: '/activity', label: 'nav.activity', icon: GraphIcon },
+  { to: '/connections', label: 'nav.connections', icon: PlugIcon },
   { to: '/settings', label: 'nav.settings', icon: GearIcon }
 ]
 

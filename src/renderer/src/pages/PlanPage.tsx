@@ -1,40 +1,45 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Checkbox, IconButton, TextInput } from '@primer/react'
-import { ChevronLeftIcon, ChevronRightIcon, FlameIcon, PencilIcon, PlusIcon, SyncIcon } from '@primer/octicons-react'
+import { ChevronLeftIcon, ChevronRightIcon, PencilIcon, PlusIcon, SyncIcon } from '@primer/octicons-react'
 import { Link } from 'react-router'
-import type { Recurrence, Task } from '@shared/types'
-import { MINUTE, addDays, startOfWeek, todayKey } from '@shared/time'
+import type { CalendarEvent, Recurrence, Task } from '@shared/types'
+import { MINUTE, addDays, dayKey, endOfDayMs, formatHM, startOfDayMs, startOfWeek, todayKey } from '@shared/time'
 import { occursOn } from '@shared/recurrence'
 import { api } from '../api'
 import { useApp } from '../context'
 import { useQuery } from '../hooks'
 import { useI18n } from '../i18n'
 import { ruleText } from '../utils'
-import { Blankslate, StateIcon, TaskLabels } from '../components/common'
+import { Blankslate, StateIcon, StreakBadge, TaskLabels } from '../components/common'
 import { RecurrenceDialog } from '../components/RecurrenceDialog'
 
 const BACKLOG = 'backlog'
+const byTime = (a: Task, b: Task): number =>
+  Number(a.status === 'closed') - Number(b.status === 'closed') ||
+  (a.plannedTime ?? '99:99').localeCompare(b.plannedTime ?? '99:99') ||
+  a.sortOrder - b.sortOrder
 
 export function PlanPage(): ReactNode {
-  const { settings } = useApp()
+  const { settings, goalById } = useApp()
   const i18n = useI18n()
   const { t, tn, date, duration } = i18n
   const today = todayKey()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(today, settings.weekStartsOn))
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const tasks = useQuery(() => api.listTasks(), [], ['tasks'])
   const recurrences = useQuery(() => api.listRecurrences(), [], ['meta', 'tasks'])
+  const events = useQuery(() => api.listCalendarEvents(startOfDayMs(weekStart), endOfDayMs(days[6])), [weekStart], ['calendar'])
   const [editing, setEditing] = useState<Recurrence | 'new' | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
 
-  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const all = tasks.data ?? []
   const recs = recurrences.data ?? []
   const columnTasks = (col: string): Task[] =>
-    (col === BACKLOG ? all.filter((x) => x.status === 'open' && x.plannedDate == null) : all.filter((x) => x.plannedDate === col)).sort(
-      (a, b) => Number(a.status === 'closed') - Number(b.status === 'closed') || a.sortOrder - b.sortOrder
-    )
+    (col === BACKLOG ? all.filter((x) => x.status === 'open' && x.plannedDate == null) : all.filter((x) => x.plannedDate === col)).sort(byTime)
   // Future occurrences of recurring tasks are shown as dashed placeholders.
   const ghosts = (day: string): Recurrence[] => (day <= today ? [] : recs.filter((r) => r.active && occursOn(r, day)))
+  const dayEvents = (day: string): CalendarEvent[] =>
+    (events.data ?? []).filter((e) => (e.allDay ? e.start < endOfDayMs(day) && e.end > startOfDayMs(day) : dayKey(e.start) === day))
   const moveTo = (col: string, taskId: number): void => void api.updateTask(taskId, { plannedDate: col === BACKLOG ? null : col })
 
   return (
@@ -80,6 +85,13 @@ export function PlanPage(): ReactNode {
                 </span>
               </div>
               <div className="board-col-body">
+                {col !== BACKLOG &&
+                  dayEvents(col).map((e) => (
+                    <div key={`e${e.id}`} className="board-event" style={{ borderColor: e.color }} title={e.location || e.title}>
+                      {!e.allDay && <span className="mono">{formatHM(e.start)} </span>}
+                      {e.title}
+                    </div>
+                  ))}
                 {list.map((x) => (
                   <BoardCard key={x.id} task={x} />
                 ))}
@@ -88,7 +100,10 @@ export function PlanPage(): ReactNode {
                     <div key={`r${r.id}`} className="board-card ghost" title={ruleText(r, i18n)}>
                       <div className="row small">
                         <SyncIcon size={12} />
-                        <span className="truncate">{r.title}</span>
+                        <span className="truncate">
+                          {r.timeOfDay ? `${r.timeOfDay} ` : ''}
+                          {r.title}
+                        </span>
                       </div>
                     </div>
                   ))}
@@ -113,32 +128,42 @@ export function PlanPage(): ReactNode {
               <p>{t('plan.noRecurringText')}</p>
             </Blankslate>
           ) : (
-            recs.map((r) => (
-              <div key={r.id} className="box-row hoverable" style={{ alignItems: 'center' }}>
-                <SyncIcon className={r.active ? 'fg-success' : 'muted'} />
-                <div className="grow">
-                  <div className="row row-wrap">
-                    <span className={`bold${r.active ? '' : ' muted'}`}>{r.title}</span>
-                    <TaskLabels ids={r.labelIds} />
+            recs.map((r) => {
+              const goal = r.goalId != null ? goalById.get(r.goalId) : undefined
+              return (
+                <div key={r.id} className="box-row hoverable" style={{ alignItems: 'center' }}>
+                  <SyncIcon className={r.active ? 'fg-success' : 'muted'} />
+                  <div className="grow">
+                    <div className="row row-wrap">
+                      <span className={`bold${r.active ? '' : ' muted'}`}>{r.title}</span>
+                      <StreakBadge n={r.streak} title={t('plan.streakTitle')} />
+                      <TaskLabels ids={r.labelIds} />
+                      {goal && (
+                        <Link to={`/goals/${goal.id}`} className="small link-plain">
+                          {goal.emoji} {goal.title}
+                        </Link>
+                      )}
+                    </div>
+                    <div className="small muted">
+                      {[
+                        ruleText(r, i18n),
+                        r.timeOfDay ? t('plan.at', { time: r.timeOfDay }) : null,
+                        r.estimateMin ? duration(r.estimateMin * MINUTE) : null,
+                        r.completeOnTarget ? t('plan.autoComplete') : null,
+                        tn('plan.doneTimes', r.doneTotal)
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
                   </div>
-                  <div className="small muted">
-                    {ruleText(r, i18n)}
-                    {r.estimateMin ? ` · ${duration(r.estimateMin * MINUTE)}` : ''} · {tn('plan.doneTimes', r.doneTotal)}
-                  </div>
+                  <label className="row small nowrap">
+                    <Checkbox checked={r.active} onChange={(e) => void api.saveRecurrence({ ...r, active: e.target.checked })} />
+                    {t('plan.active')}
+                  </label>
+                  <IconButton icon={PencilIcon} size="small" variant="invisible" aria-label={t('common.edit')} onClick={() => setEditing(r)} />
                 </div>
-                {r.streak > 0 && (
-                  <span className="streak" title={t('plan.streakTitle')}>
-                    <FlameIcon size={14} />
-                    {r.streak}
-                  </span>
-                )}
-                <label className="row small nowrap">
-                  <Checkbox checked={r.active} onChange={(e) => void api.saveRecurrence({ ...r, active: e.target.checked })} />
-                  {t('plan.active')}
-                </label>
-                <IconButton icon={PencilIcon} size="small" variant="invisible" aria-label={t('common.edit')} onClick={() => setEditing(r)} />
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </section>
@@ -165,8 +190,10 @@ function BoardCard({ task }: { task: Task }): ReactNode {
           <StateIcon task={task} size={14} />
         </span>
         <Link to={`/tasks/${task.number}`} className="board-card-title grow">
+          {task.plannedTime && <span className="mono muted">{task.plannedTime} </span>}
           {task.title}
         </Link>
+        <StreakBadge n={task.streak} />
       </div>
       <div className="board-card-meta">
         <span>#{task.number}</span>

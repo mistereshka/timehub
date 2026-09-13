@@ -29,7 +29,7 @@ function RunningButton({ timer, block }: { timer: RunningTimer; block: boolean }
 export function TimerButton({ task, full = false }: { task: Pick<Task, 'id'>; full?: boolean }): ReactNode {
   const { timer } = useApp()
   const { t } = useI18n()
-  if (timer?.taskId === task.id) return <RunningButton timer={timer} block={full} />
+  if (timer && timer.taskId === task.id) return <RunningButton timer={timer} block={full} />
   if (full) {
     return (
       <Button block leadingVisual={PlayIcon} onClick={() => void api.startTimer(task.id)}>
@@ -38,4 +38,19 @@ export function TimerButton({ task, full = false }: { task: Pick<Task, 'id'>; fu
     )
   }
   return <IconButton icon={PlayIcon} size="small" variant="invisible" aria-label={t('timer.start')} onClick={() => void api.startTimer(task.id)} />
+}
+
+/** "I'm working on this goal now" — time goes to the goal itself. */
+export function GoalTimerButton({ goalId, full = false }: { goalId: number; full?: boolean }): ReactNode {
+  const { timer } = useApp()
+  const { t } = useI18n()
+  if (timer && timer.goalId === goalId) return <RunningButton timer={timer} block={full} />
+  if (full) {
+    return (
+      <Button block leadingVisual={PlayIcon} onClick={() => void api.startGoalTimer(goalId)}>
+        {t('goals.startTimer')}
+      </Button>
+    )
+  }
+  return <IconButton icon={PlayIcon} size="small" variant="invisible" aria-label={t('goals.startTimer')} onClick={() => void api.startGoalTimer(goalId)} />
 }

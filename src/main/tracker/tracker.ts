@@ -1,12 +1,18 @@
 import { app, powerMonitor } from 'electron'
 import { win32 as winPath } from 'node:path'
 import type { Service } from '@shared/service'
-import type { ID, TrackerState, TrackerStatus } from '@shared/types'
+import type { GamePresence, ID, TrackerState, TrackerStatus } from '@shared/types'
 import { looksLikeGame } from '@shared/catalog'
 
 type Win32 = typeof import('./win32')
 
 const GAME_SCAN_MS = 60_000
+
+export interface RunningGame {
+  appId: ID
+  exePath: string
+  since: number
+}
 
 /**
  * Samples the foreground window every poll interval (like Discord's activity
@@ -17,9 +23,10 @@ export class Tracker {
   private pollTimer: NodeJS.Timeout | null = null
   private gameTimer: NodeJS.Timeout | null = null
   private locked = false
-  private status: TrackerStatus = { supported: false, state: 'off', current: null, games: [] }
+  private status: TrackerStatus = { supported: false, state: 'off', current: null, games: [], media: null }
   private readonly iconRequested = new Set<ID>()
   private readonly gamesSince = new Map<string, number>()
+  private running: RunningGame[] = []
 
   constructor(
     private readonly service: Service,
@@ -68,6 +75,11 @@ export class Tracker {
 
   getStatus(): TrackerStatus {
     return this.status
+  }
+
+  /** Games that are open right now, with their executables (for store lookups). */
+  getRunningGames(): RunningGame[] {
+    return this.running
   }
 
   private setStatus(patch: Partial<TrackerStatus>): void {
@@ -125,12 +137,15 @@ export class Tracker {
     const w = this.win32
     if (!w) return
     if (this.service.getSettings().trackingPaused) {
+      this.running = []
       if (this.status.games.length) this.setStatus({ games: [] })
       return
     }
-    let paths: string[]
+    let processes: { pid: number; path: string }[]
+    let visible: Set<number>
     try {
-      paths = w.listProcessPaths()
+      processes = w.listProcesses()
+      visible = w.visibleWindowPids()
     } catch (err) {
       console.error('Process scan failed:', err)
       return
@@ -142,24 +157,33 @@ export class Tracker {
         .map((a) => [a.exePath.toLowerCase(), a])
     )
     const now = Date.now()
-    const games: TrackerStatus['games'] = []
-    const running = new Set<string>()
-    for (const p of paths) {
-      const key = p.toLowerCase()
+    const running: RunningGame[] = []
+    const games: GamePresence[] = []
+    const seen = new Set<string>()
+    for (const { pid, path } of processes) {
+      const key = path.toLowerCase()
+      // A game counts only while it has a window — not when it idles in the tray.
+      if (seen.has(key) || !visible.has(pid)) continue
       let info = flagged.get(key)
       if (!info) {
-        const exeName = winPath.basename(p)
-        if (!looksLikeGame(exeName, p)) continue
-        info = this.service.ensureApp(p, exeName, w.fileDescription(p) ?? undefined).app
+        const exeName = winPath.basename(path)
+        if (!looksLikeGame(exeName, path)) continue
+        info = this.service.ensureApp(path, exeName, w.fileDescription(path) ?? undefined).app
         if (!info.isGame) continue // the user un-flagged it
       }
       if (info.ignored) continue
-      running.add(key)
+      seen.add(key)
       if (!this.gamesSince.has(key)) this.gamesSince.set(key, now)
-      games.push({ appId: info.id, displayName: info.displayName, icon: info.icon, since: this.gamesSince.get(key)! })
-      if (!info.icon) this.loadIcon(info.id, p)
+      const since = this.gamesSince.get(key)!
+      running.push({ appId: info.id, exePath: path, since })
+      games.push({
+        appId: info.id, displayName: info.displayName, icon: info.icon, since, provider: null, details: null, imageUrl: null,
+        playersOnline: null, storeUrl: null, totalMs: 0, todayMs: 0, streak: 0, platformPlaytimeMin: null
+      })
+      if (!info.icon) this.loadIcon(info.id, path)
     }
-    for (const key of [...this.gamesSince.keys()]) if (!running.has(key)) this.gamesSince.delete(key)
+    for (const key of [...this.gamesSince.keys()]) if (!seen.has(key)) this.gamesSince.delete(key)
+    this.running = running
     this.setStatus({ games })
   }
 

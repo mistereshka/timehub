@@ -1,8 +1,10 @@
 import { transaction, type Row, type SqlDb, type SqlValue } from './sql'
 import { migrate } from './migrations'
 import type * as T from './types'
-import { DAY, MINUTE, addDays, clipDuration, dayKey, endOfDayMs, startOfDayMs, todayKey } from './time'
+import { DAY, MINUTE, addDays, clipDuration, dayKey, endOfDayMs, startOfDayMs, todayKey, weekday } from './time'
 import { computeStreak, occursOn } from './recurrence'
+import { currentStreak, longestStreak } from './streak'
+import { editorProject, isCodeEditor } from './projects'
 import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, prettifyExeName } from './catalog'
 
 export interface ServiceOptions {
@@ -34,6 +36,27 @@ export type SampleResult =
   | { state: 'ignored'; app: T.AppInfo }
   | { state: 'active'; app: T.AppInfo; title: string; since: number; created: boolean }
 
+/** What a media player reports (Windows media sessions). */
+export interface MediaSample {
+  at: number
+  source: string
+  title: string
+  artist: string
+  album: string
+  playing: boolean
+}
+
+export interface IntegrationRow {
+  enabled: boolean
+  config: Record<string, unknown>
+  state: Record<string, unknown>
+  updatedAt: number
+}
+
+interface Target {
+  taskId: T.ID | null
+  goalId: T.ID | null
+}
 interface OpenSpan {
   id: T.ID
   start: number
@@ -42,14 +65,21 @@ interface OpenSpan {
 interface OpenSession extends OpenSpan {
   appId: T.ID
   title: string
-  ruleTaskId: T.ID | null
+  ruleTarget: Target | null
 }
-interface OpenRuleEntry extends OpenSpan {
-  taskId: T.ID
+interface OpenRuleEntry extends OpenSpan, Target {}
+interface OpenMedia extends OpenSpan {
+  source: string
+  title: string
+  artist: string
 }
 
 const MIN_SPAN_MS = 1000
+const MIN_MEDIA_MS = 5000
 const MAX_TITLE_LENGTH = 300
+/** A day counts toward an app/game streak after this much use. */
+const STREAK_MIN_MS = 5 * MINUTE
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
 export function defaultSettings(language: T.Lang): T.Settings {
   return {
@@ -81,10 +111,19 @@ export function patternMatches(pattern: string, title: string): boolean {
 
 const bool = (v: unknown): boolean => v === 1 || v === true
 const idList = (v: unknown): T.ID[] => (v == null || v === '' ? [] : String(v).split(',').map(Number))
+const clampPercent = (n: number): number => Math.min(100, Math.max(0, Math.round(n)))
+const sameTarget = (a: Target | null, b: Target | null): boolean =>
+  (a?.taskId ?? null) === (b?.taskId ?? null) && (a?.goalId ?? null) === (b?.goalId ?? null)
 
 function required(value: string, what: string): string {
   const v = value.trim()
   if (!v) throw new Error(`${what} is required`)
+  return v
+}
+
+function normalizeTime(v: string | null | undefined): string | null {
+  if (v == null || v === '') return null
+  if (!TIME_RE.test(v)) throw new Error('Time must look like HH:MM')
   return v
 }
 
@@ -101,6 +140,22 @@ function eachDay(fromKey: string, toKey: string, value: (key: string) => number)
   return out
 }
 
+/** Adds each [start, end) span to the local days it covers, clipped to [from, to). */
+function spreadByDay(spans: { s: number; e: number }[], from: number, to: number): Map<string, number> {
+  const totals = new Map<string, number>()
+  for (const span of spans) {
+    let start = Math.max(span.s, from)
+    const end = Math.min(span.e, to)
+    while (start < end) {
+      const key = dayKey(start)
+      const chunkEnd = Math.min(end, endOfDayMs(key))
+      bump(totals, key, chunkEnd - start)
+      start = chunkEnd
+    }
+  }
+  return totals
+}
+
 const toProject = (r: Row): T.Project => ({
   id: r.id, name: r.name, color: r.color, description: r.description, archived: bool(r.archived), createdAt: r.created_at
 })
@@ -108,12 +163,14 @@ const toLabel = (r: Row): T.Label => ({ id: r.id, name: r.name, color: r.color, 
 const toTask = (r: Row): T.Task => ({
   id: r.id, number: r.number, title: r.title, body: r.body, status: r.status, priority: r.priority,
   projectId: r.project_id, labelIds: idList(r.label_ids), dueDate: r.due_date, plannedDate: r.planned_date,
-  estimateMin: r.estimate_min, recurrenceId: r.recurrence_id, sortOrder: r.sort_order,
+  plannedTime: r.planned_time ?? null, estimateMin: r.estimate_min, recurrenceId: r.recurrence_id,
+  parentId: r.parent_id ?? null, goalId: r.goal_id ?? null, progress: r.progress ?? null,
+  childCount: r.child_count ?? 0, childDone: r.child_done ?? 0, streak: 0, sortOrder: r.sort_order,
   createdAt: r.created_at, updatedAt: r.updated_at, closedAt: r.closed_at, trackedMs: r.tracked_ms ?? 0
 })
 const toEntry = (r: Row): T.TimeEntry => ({
-  id: r.id, taskId: r.task_id, taskNumber: r.task_number, taskTitle: r.task_title,
-  start: r.start_ms, end: r.end_ms, source: r.source, note: r.note
+  id: r.id, taskId: r.task_id ?? null, goalId: r.goal_id ?? null, taskNumber: r.task_number ?? null,
+  title: r.title ?? '', start: r.start_ms, end: r.end_ms, source: r.source, note: r.note
 })
 const toCategory = (r: Row): T.Category => ({ id: r.id, key: r.key, name: r.name, color: r.color })
 const toApp = (r: Row): T.AppInfo => ({
@@ -125,28 +182,78 @@ const toSession = (r: Row): T.ActivitySession => ({
   id: r.id, appId: r.app_id, title: r.title, start: r.start_ms, end: r.end_ms, taskId: r.task_id, categoryId: r.category_id
 })
 const toRule = (r: Row): T.Rule => ({
-  id: r.id, appId: r.app_id, titlePattern: r.title_pattern, taskId: r.task_id, categoryId: r.category_id, createdAt: r.created_at
+  id: r.id, appId: r.app_id, titlePattern: r.title_pattern, taskId: r.task_id, goalId: r.goal_id ?? null,
+  categoryId: r.category_id, createdAt: r.created_at
+})
+const toNote = (r: Row): T.GoalNote => ({ id: r.id, goalId: r.goal_id, body: r.body, progress: r.progress ?? null, createdAt: r.created_at })
+const toLink = (r: Row): T.AppLink => ({
+  appId: r.app_id, provider: r.provider, externalId: r.external_id, name: r.name ?? null, imageUrl: r.image_url ?? null, storeUrl: r.store_url ?? null
+})
+const toMedia = (r: Row): T.MediaSession => ({
+  id: r.id, source: r.source, title: r.title, artist: r.artist, album: r.album, start: r.start_ms, end: r.end_ms
+})
+const toEvent = (r: Row): T.CalendarEvent => ({
+  id: r.id, source: r.source, uid: r.uid, title: r.title, location: r.location, start: r.start_ms, end: r.end_ms,
+  allDay: bool(r.all_day), color: r.color
 })
 function toRecurrence(r: Row): Omit<T.Recurrence, 'streak' | 'doneTotal'> {
   return {
     id: r.id, title: r.title, body: r.body, rule: r.rule, daysMask: r.days_mask, dayOfMonth: r.day_of_month,
-    projectId: r.project_id, labelIds: idList(r.label_ids), estimateMin: r.estimate_min, active: bool(r.active),
+    timeOfDay: r.time_of_day ?? null, completeOnTarget: bool(r.complete_on_target), projectId: r.project_id,
+    goalId: r.goal_id ?? null, labelIds: idList(r.label_ids), estimateMin: r.estimate_min, active: bool(r.active),
     startDate: r.start_date, lastGenerated: r.last_generated, createdAt: r.created_at
   }
 }
+function toGoal(r: Row, streak: number): T.Goal {
+  const taskCount = (r.task_count as number) ?? 0
+  const taskDone = (r.task_done as number) ?? 0
+  const autoProgress = bool(r.auto_progress)
+  const progress =
+    r.status === 'achieved' ? 100 : autoProgress && taskCount > 0 ? Math.round((taskDone / taskCount) * 100) : (r.progress as number)
+  return {
+    id: r.id, title: r.title, body: r.body, emoji: r.emoji, color: r.color, status: r.status, progress,
+    manualProgress: r.progress, autoProgress, targetDate: r.target_date, createdAt: r.created_at, updatedAt: r.updated_at,
+    achievedAt: r.achieved_at, trackedMs: r.tracked_ms ?? 0, taskCount, taskDone, streak, lastWorkedAt: r.last_worked ?? null
+  }
+}
+
+const toLibrary = (r: Row): T.LibraryItem => ({
+  id: r.id, kind: r.kind, title: r.title, originalTitle: r.original_title, coverUrl: r.cover_url ?? null, status: r.status,
+  favorite: bool(r.favorite), progress: r.progress, total: r.total ?? null, latest: r.latest ?? null, rating: r.rating ?? null,
+  notes: r.notes, year: r.year ?? null, format: r.format, source: r.source, externalId: r.external_id ?? null, url: r.url ?? null,
+  appId: r.app_id ?? null, statusAuto: bool(r.status_auto), createdAt: r.created_at, updatedAt: r.updated_at,
+  startedAt: r.started_at ?? null, finishedAt: r.finished_at ?? null, trackedMs: r.tracked_ms ?? 0, lastActivityAt: r.last_activity ?? null
+})
+
+const LIBRARY_SELECT = `SELECT l.*,
+  (SELECT COALESCE(SUM(s.end_ms - s.start_ms), 0) FROM activity_sessions s WHERE s.app_id = l.app_id) AS tracked_ms,
+  (SELECT MAX(s.end_ms) FROM activity_sessions s WHERE s.app_id = l.app_id) AS last_activity
+  FROM library_items l`
 
 // The first `?` is "now", used as the end of a running timer.
 const TASK_SELECT = `SELECT t.*,
   (SELECT group_concat(label_id) FROM task_labels tl WHERE tl.task_id = t.id) AS label_ids,
-  (SELECT COALESCE(SUM(COALESCE(e.end_ms, ?) - e.start_ms), 0) FROM time_entries e WHERE e.task_id = t.id) AS tracked_ms
+  (SELECT COALESCE(SUM(COALESCE(e.end_ms, ?) - e.start_ms), 0) FROM time_entries e WHERE e.task_id = t.id) AS tracked_ms,
+  (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id) AS child_count,
+  (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id AND c.status = 'closed') AS child_done
   FROM tasks t`
 
-const ENTRY_SELECT = `SELECT e.*, t.number AS task_number, t.title AS task_title
-  FROM time_entries e JOIN tasks t ON t.id = e.task_id`
+const ENTRY_SELECT = `SELECT e.*, t.number AS task_number, COALESCE(t.title, g.title) AS title
+  FROM time_entries e LEFT JOIN tasks t ON t.id = e.task_id LEFT JOIN goals g ON g.id = e.goal_id`
 
 const SESSION_SELECT = `SELECT s.id, s.app_id, s.title, s.start_ms, s.end_ms, s.task_id,
   COALESCE(s.category_id, a.category_id, (SELECT id FROM categories WHERE key = 'other')) AS category_id
   FROM activity_sessions s JOIN apps a ON a.id = s.app_id`
+
+// Both `?` are "now" (running timers).
+const GOAL_SELECT = `SELECT g.*,
+  (SELECT COUNT(*) FROM tasks t WHERE t.goal_id = g.id) AS task_count,
+  (SELECT COUNT(*) FROM tasks t WHERE t.goal_id = g.id AND t.status = 'closed') AS task_done,
+  (SELECT COALESCE(SUM(COALESCE(e.end_ms, ?) - e.start_ms), 0) FROM time_entries e
+     WHERE e.goal_id = g.id OR e.task_id IN (SELECT id FROM tasks WHERE goal_id = g.id)) AS tracked_ms,
+  (SELECT MAX(COALESCE(e.end_ms, ?)) FROM time_entries e
+     WHERE e.goal_id = g.id OR e.task_id IN (SELECT id FROM tasks WHERE goal_id = g.id)) AS last_worked
+  FROM goals g`
 
 /**
  * All of timehub's data logic. Synchronous and platform-agnostic: the Electron
@@ -160,6 +267,7 @@ export class Service {
   private cur: OpenSession | null = null
   private appSince = 0
   private ruleEntry: OpenRuleEntry | null = null
+  private media: OpenMedia | null = null
 
   constructor(
     private readonly db: SqlDb,
@@ -252,29 +360,39 @@ export class Service {
 
   // --------------------------------------------------------------------- tasks
 
-  listTasks(filter: { status?: T.TaskStatus } = {}): T.Task[] {
+  listTasks(filter: { status?: T.TaskStatus; parentId?: T.ID; goalId?: T.ID } = {}): T.Task[] {
+    const where: string[] = []
     const params: SqlValue[] = [this.now()]
-    let where = ''
     if (filter.status) {
-      where = 'WHERE t.status = ?'
+      where.push('t.status = ?')
       params.push(filter.status)
     }
-    return this.db.all(`${TASK_SELECT} ${where} ORDER BY t.number DESC`, params).map(toTask)
+    if (filter.parentId != null) {
+      where.push('t.parent_id = ?')
+      params.push(filter.parentId)
+    }
+    if (filter.goalId != null) {
+      where.push('t.goal_id = ?')
+      params.push(filter.goalId)
+    }
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    return this.withStreaks(this.db.all(`${TASK_SELECT} ${clause} ORDER BY t.number DESC`, params).map(toTask))
   }
 
   getTask(id: T.ID): T.Task | null {
     const row = this.db.get(`${TASK_SELECT} WHERE t.id = ?`, [this.now(), id])
-    return row ? toTask(row) : null
+    return row ? this.withStreaks([toTask(row)])[0] : null
   }
 
   getTaskByNumber(number: number): T.Task | null {
     const row = this.db.get(`${TASK_SELECT} WHERE t.number = ?`, [this.now(), number])
-    return row ? toTask(row) : null
+    return row ? this.withStreaks([toTask(row)])[0] : null
   }
 
   createTask(input: T.TaskInput): T.Task {
     const id = this.insertTask(input, null)
     this.notify('tasks')
+    if (input.goalId != null || input.parentId != null) this.notify('goals')
     return this.getTask(id)!
   }
 
@@ -292,7 +410,14 @@ export class Service {
     if (patch.projectId !== undefined) set('project_id', patch.projectId)
     if (patch.dueDate !== undefined) set('due_date', patch.dueDate)
     if (patch.plannedDate !== undefined) set('planned_date', patch.plannedDate)
+    if (patch.plannedTime !== undefined) set('planned_time', normalizeTime(patch.plannedTime))
     if (patch.estimateMin !== undefined) set('estimate_min', patch.estimateMin)
+    if (patch.goalId !== undefined) set('goal_id', patch.goalId)
+    if (patch.progress !== undefined) set('progress', patch.progress == null ? null : clampPercent(patch.progress))
+    if (patch.parentId !== undefined) {
+      if (patch.parentId != null) this.assertNoCycle(id, patch.parentId)
+      set('parent_id', patch.parentId)
+    }
     const closing = patch.status === 'closed'
     if (patch.status !== undefined) {
       const current = this.db.get('SELECT status FROM tasks WHERE id = ?', [id])
@@ -306,9 +431,10 @@ export class Service {
     transaction(this.db, () => {
       this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`, [...params, id])
       if (patch.labelIds) this.setTaskLabels(id, patch.labelIds)
-      if (closing) timerStopped = this.closeRunningEntries(now, id)
+      if (closing) timerStopped = this.closeRunningEntries(now, { taskId: id })
     })
     this.notify('tasks')
+    this.notify('goals')
     if (timerStopped) this.notify('time')
     const task = this.getTask(id)
     if (!task) throw new Error('Task not found')
@@ -322,6 +448,7 @@ export class Service {
     this.notify('tasks')
     this.notify('time')
     this.notify('meta')
+    this.notify('goals')
   }
 
   /** Persists a manual ordering (e.g. drag & drop on the Today page). */
@@ -332,21 +459,42 @@ export class Service {
     this.notify('tasks')
   }
 
+  private withStreaks(tasks: T.Task[]): T.Task[] {
+    if (!tasks.some((t) => t.recurrenceId != null)) return tasks
+    const streaks = new Map(this.listRecurrences().map((r) => [r.id, r.streak]))
+    for (const t of tasks) if (t.recurrenceId != null) t.streak = streaks.get(t.recurrenceId) ?? 0
+    return tasks
+  }
+
+  private assertNoCycle(taskId: T.ID, parentId: T.ID): void {
+    let cursor: T.ID | null = parentId
+    for (let i = 0; cursor != null && i < 1000; i++) {
+      if (cursor === taskId) throw new Error('A task cannot be a subtask of itself')
+      cursor = (this.db.get('SELECT parent_id FROM tasks WHERE id = ?', [cursor])?.parent_id as T.ID | null) ?? null
+    }
+  }
+
   private insertTask(input: T.TaskInput, recurrenceId: T.ID | null): T.ID {
     const title = required(input.title, 'Title')
     const now = this.now()
     return transaction(this.db, () => {
+      // Subtasks inherit the parent's goal and project unless given explicitly.
+      const parent = input.parentId != null ? this.db.get('SELECT goal_id, project_id FROM tasks WHERE id = ?', [input.parentId]) : undefined
+      if (input.parentId != null && !parent) throw new Error('Parent task not found')
+      const goalId = input.goalId !== undefined ? input.goalId : (parent?.goal_id ?? null)
+      const projectId = input.projectId !== undefined ? input.projectId : (parent?.project_id ?? null)
       const maxNumber = this.db.get('SELECT COALESCE(MAX(number), 0) AS n FROM tasks')!.n as number
       const number = Math.max(maxNumber, Number(this.readSetting('_taskSeq') ?? 0)) + 1
       this.writeSetting('_taskSeq', number)
       const sort = this.db.get('SELECT COALESCE(MAX(sort_order), 0) + 1 AS s FROM tasks')!.s as number
       const { lastId } = this.db.run(
-        `INSERT INTO tasks (number, title, body, status, priority, project_id, due_date, planned_date,
-          estimate_min, recurrence_id, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (number, title, body, status, priority, project_id, due_date, planned_date, planned_time,
+          estimate_min, recurrence_id, parent_id, goal_id, progress, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          number, title, input.body ?? '', input.priority ?? 0, input.projectId ?? null, input.dueDate ?? null,
-          input.plannedDate ?? null, input.estimateMin ?? null, recurrenceId, sort, now, now
+          number, title, input.body ?? '', input.priority ?? 0, projectId, input.dueDate ?? null, input.plannedDate ?? null,
+          normalizeTime(input.plannedTime), input.estimateMin ?? null, recurrenceId, input.parentId ?? null, goalId,
+          input.progress == null ? null : clampPercent(input.progress), sort, now, now
         ]
       )
       this.setTaskLabels(lastId, input.labelIds ?? [])
@@ -364,12 +512,21 @@ export class Service {
 
   // ---------------------------------------------------------- time tracking
 
-  listTimeEntries(q: { taskId?: T.ID; from?: number; to?: number } = {}): T.TimeEntry[] {
+  listTimeEntries(q: { taskId?: T.ID; goalId?: T.ID; withGoalTasks?: boolean; from?: number; to?: number } = {}): T.TimeEntry[] {
     const where: string[] = []
     const params: SqlValue[] = []
     if (q.taskId != null) {
       where.push('e.task_id = ?')
       params.push(q.taskId)
+    }
+    if (q.goalId != null) {
+      if (q.withGoalTasks) {
+        where.push('(e.goal_id = ? OR e.task_id IN (SELECT id FROM tasks WHERE goal_id = ?))')
+        params.push(q.goalId, q.goalId)
+      } else {
+        where.push('e.goal_id = ?')
+        params.push(q.goalId)
+      }
     }
     if (q.from != null) {
       where.push('COALESCE(e.end_ms, ?) > ?')
@@ -385,33 +542,60 @@ export class Service {
 
   getRunningTimer(): T.RunningTimer | null {
     const r = this.db.get(`${ENTRY_SELECT} WHERE e.end_ms IS NULL ORDER BY e.start_ms DESC LIMIT 1`)
-    return r ? { entryId: r.id, taskId: r.task_id, taskNumber: r.task_number, taskTitle: r.task_title, start: r.start_ms } : null
+    return r
+      ? { entryId: r.id, taskId: r.task_id ?? null, goalId: r.goal_id ?? null, taskNumber: r.task_number ?? null, title: r.title ?? '', start: r.start_ms }
+      : null
   }
 
   /** Starts a timer on the task; any running timer is stopped first. */
   startTimer(taskId: T.ID): T.RunningTimer {
+    return this.startTimerFor({ taskId, goalId: null })
+  }
+
+  /** Starts a timer on a goal itself ("I'm working on this goal now"). */
+  startGoalTimer(goalId: T.ID): T.RunningTimer {
+    return this.startTimerFor({ taskId: null, goalId })
+  }
+
+  private startTimerFor(target: Target): T.RunningTimer {
     const now = this.now()
     transaction(this.db, () => {
       this.closeRunningEntries(now)
       this.finishRuleEntry()
-      this.db.run(`INSERT INTO time_entries (task_id, start_ms, end_ms, source, note) VALUES (?, ?, NULL, 'timer', '')`, [taskId, now])
+      this.db.run(`INSERT INTO time_entries (task_id, goal_id, start_ms, end_ms, source, note) VALUES (?, ?, ?, NULL, 'timer', '')`, [
+        target.taskId,
+        target.goalId,
+        now
+      ])
     })
+    this.checkTargets()
     this.notify('time')
     this.notify('tasks')
+    this.notify('goals')
     return this.getRunningTimer()!
   }
 
   stopTimer(): void {
     if (this.closeRunningEntries(this.now())) {
+      this.checkTargets()
       this.notify('time')
       this.notify('tasks')
+      this.notify('goals')
     }
   }
 
-  private closeRunningEntries(at: number, taskId?: T.ID): boolean {
-    const onlyTask = taskId != null ? ' AND task_id = ?' : ''
-    const params: SqlValue[] = taskId != null ? [at, taskId] : [at]
-    const { changes } = this.db.run(`UPDATE time_entries SET end_ms = MAX(start_ms, ?) WHERE end_ms IS NULL${onlyTask}`, params)
+  private closeRunningEntries(at: number, target: Partial<Target> = {}): boolean {
+    const where = ['end_ms IS NULL']
+    const params: SqlValue[] = [at]
+    if (target.taskId != null) {
+      where.push('task_id = ?')
+      params.push(target.taskId)
+    }
+    if (target.goalId != null) {
+      where.push('goal_id = ?')
+      params.push(target.goalId)
+    }
+    const { changes } = this.db.run(`UPDATE time_entries SET end_ms = MAX(start_ms, ?) WHERE ${where.join(' AND ')}`, params)
     // A start/stop misclick shouldn't leave a zero-length entry behind.
     this.db.run(`DELETE FROM time_entries WHERE source = 'timer' AND end_ms IS NOT NULL AND end_ms - start_ms < ? AND start_ms > ?`, [
       MIN_SPAN_MS,
@@ -422,12 +606,17 @@ export class Service {
 
   addTimeEntry(input: T.TimeEntryInput): T.TimeEntry {
     validateSpan(input.start, input.end)
+    const taskId = input.taskId ?? null
+    const goalId = input.goalId ?? null
+    if ((taskId == null) === (goalId == null)) throw new Error('A time entry belongs to exactly one task or goal')
     const { lastId } = this.db.run(
-      `INSERT INTO time_entries (task_id, start_ms, end_ms, source, note) VALUES (?, ?, ?, 'manual', ?)`,
-      [input.taskId, input.start, input.end, input.note?.trim() ?? '']
+      `INSERT INTO time_entries (task_id, goal_id, start_ms, end_ms, source, note) VALUES (?, ?, ?, ?, 'manual', ?)`,
+      [taskId, goalId, input.start, input.end, input.note?.trim() ?? '']
     )
+    this.checkTargets()
     this.notify('time')
     this.notify('tasks')
+    this.notify('goals')
     return toEntry(this.db.get(`${ENTRY_SELECT} WHERE e.id = ?`, [lastId])!)
   }
 
@@ -440,8 +629,10 @@ export class Service {
     this.db.run('UPDATE time_entries SET start_ms = ?, end_ms = ?, note = ? WHERE id = ?', [
       start, end, patch.note?.trim() ?? current.note, id
     ])
+    this.checkTargets()
     this.notify('time')
     this.notify('tasks')
+    this.notify('goals')
     return toEntry(this.db.get(`${ENTRY_SELECT} WHERE e.id = ?`, [id])!)
   }
 
@@ -450,6 +641,23 @@ export class Service {
     if (this.ruleEntry?.id === id) this.ruleEntry = null
     this.notify('time')
     this.notify('tasks')
+    this.notify('goals')
+  }
+
+  /**
+   * Closes open instances of "complete on target" recurrences once their
+   * estimate is tracked (a running timer counts, and gets stopped).
+   */
+  checkTargets(): number {
+    const due = this.db.all(
+      `SELECT t.id FROM tasks t JOIN recurrences r ON r.id = t.recurrence_id
+       WHERE t.status = 'open' AND r.complete_on_target = 1 AND t.estimate_min > 0
+         AND (SELECT COALESCE(SUM(COALESCE(e.end_ms, ?) - e.start_ms), 0) FROM time_entries e WHERE e.task_id = t.id)
+             >= t.estimate_min * 60000`,
+      [this.now()]
+    )
+    for (const r of due) this.updateTask(r.id, { status: 'closed' })
+    return due.length
   }
 
   // -------------------------------------------------------------- recurrences
@@ -478,20 +686,22 @@ export class Service {
     if (input.rule === 'weekly' && !((input.daysMask ?? 0) & 0x7f)) throw new Error('Pick at least one weekday')
     const today = todayKey(this.now())
     const values: SqlValue[] = [
-      title, input.body ?? '', input.rule, input.daysMask ?? 0, input.dayOfMonth ?? null, input.projectId ?? null,
-      (input.labelIds ?? []).join(','), input.estimateMin ?? null, input.active === false ? 0 : 1
+      title, input.body ?? '', input.rule, input.daysMask ?? 0, input.dayOfMonth ?? null, normalizeTime(input.timeOfDay),
+      input.completeOnTarget ? 1 : 0, input.projectId ?? null, input.goalId ?? null, (input.labelIds ?? []).join(','),
+      input.estimateMin ?? null, input.active === false ? 0 : 1
     ]
     let id = input.id
     if (id != null) {
       this.db.run(
-        `UPDATE recurrences SET title = ?, body = ?, rule = ?, days_mask = ?, day_of_month = ?, project_id = ?,
-          label_ids = ?, estimate_min = ?, active = ?, start_date = COALESCE(?, start_date) WHERE id = ?`,
+        `UPDATE recurrences SET title = ?, body = ?, rule = ?, days_mask = ?, day_of_month = ?, time_of_day = ?,
+          complete_on_target = ?, project_id = ?, goal_id = ?, label_ids = ?, estimate_min = ?, active = ?,
+          start_date = COALESCE(?, start_date) WHERE id = ?`,
         [...values, input.startDate ?? null, id]
       )
     } else {
       id = this.db.run(
-        `INSERT INTO recurrences (title, body, rule, days_mask, day_of_month, project_id, label_ids, estimate_min,
-          active, start_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO recurrences (title, body, rule, days_mask, day_of_month, time_of_day, complete_on_target, project_id,
+          goal_id, label_ids, estimate_min, active, start_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [...values, input.startDate ?? today, this.now()]
       ).lastId
     }
@@ -532,7 +742,10 @@ export class Service {
         const exists = this.db.get('SELECT 1 AS x FROM tasks WHERE recurrence_id = ? AND planned_date = ?', [rec.id, today])
         if (occursOn(rec, today) && !exists) {
           this.insertTask(
-            { title: rec.title, body: rec.body, projectId: rec.projectId, labelIds: rec.labelIds, estimateMin: rec.estimateMin, plannedDate: today },
+            {
+              title: rec.title, body: rec.body, projectId: rec.projectId, goalId: rec.goalId, labelIds: rec.labelIds,
+              estimateMin: rec.estimateMin, plannedDate: today, plannedTime: rec.timeOfDay
+            },
             rec.id
           )
           created++
@@ -542,6 +755,124 @@ export class Service {
     })
     if (created) this.notify('tasks')
     return created
+  }
+
+  // --------------------------------------------------------------------- goals
+
+  listGoals(): T.Goal[] {
+    const now = this.now()
+    const streaks = this.goalStreaks()
+    return this.db
+      .all(`${GOAL_SELECT} ORDER BY CASE g.status WHEN 'active' THEN 0 WHEN 'achieved' THEN 1 ELSE 2 END, g.created_at DESC`, [now, now])
+      .map((r) => toGoal(r, streaks.get(r.id) ?? 0))
+  }
+
+  getGoal(id: T.ID): T.Goal | null {
+    const now = this.now()
+    const row = this.db.get(`${GOAL_SELECT} WHERE g.id = ?`, [now, now, id])
+    return row ? toGoal(row, this.goalStreaks(id).get(id) ?? 0) : null
+  }
+
+  saveGoal(input: T.GoalInput): T.Goal {
+    const now = this.now()
+    const title = required(input.title, 'Goal title')
+    let id = input.id
+    transaction(this.db, () => {
+      if (id != null) {
+        const current = this.db.get('SELECT * FROM goals WHERE id = ?', [id])
+        if (!current) throw new Error('Goal not found')
+        const status = input.status ?? current.status
+        const achievedAt = status === 'achieved' ? (current.achieved_at ?? now) : null
+        this.db.run(
+          `UPDATE goals SET title = ?, body = ?, emoji = ?, color = ?, status = ?, progress = ?, auto_progress = ?,
+            target_date = ?, updated_at = ?, achieved_at = ? WHERE id = ?`,
+          [
+            title, input.body ?? current.body, input.emoji ?? current.emoji, input.color ?? current.color, status,
+            input.manualProgress != null ? clampPercent(input.manualProgress) : current.progress,
+            input.autoProgress === undefined ? current.auto_progress : input.autoProgress ? 1 : 0,
+            input.targetDate === undefined ? current.target_date : input.targetDate, now, achievedAt, id
+          ]
+        )
+        if (status !== 'active') this.closeRunningEntries(now, { goalId: id })
+      } else {
+        id = this.db.run(
+          `INSERT INTO goals (title, body, emoji, color, status, progress, auto_progress, target_date, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
+          [
+            title, input.body ?? '', input.emoji || '🎯', input.color ?? '#1f883d', clampPercent(input.manualProgress ?? 0),
+            input.autoProgress === false ? 0 : 1, input.targetDate ?? null, now, now
+          ]
+        ).lastId
+      }
+    })
+    this.notify('goals')
+    this.notify('time')
+    return this.getGoal(id!)!
+  }
+
+  /** Deletes the goal, its journal and time logged on the goal itself; its tasks stay. */
+  deleteGoal(id: T.ID): void {
+    this.db.run('DELETE FROM goals WHERE id = ?', [id])
+    this.rulesCache = null
+    this.notify('goals')
+    this.notify('tasks')
+    this.notify('time')
+  }
+
+  listGoalNotes(goalId: T.ID): T.GoalNote[] {
+    return this.db.all('SELECT * FROM goal_notes WHERE goal_id = ? ORDER BY created_at DESC', [goalId]).map(toNote)
+  }
+
+  /** Adds a journal entry; an optional progress value also updates the goal's manual progress. */
+  addGoalNote(goalId: T.ID, body: string, progress?: number | null): T.GoalNote {
+    const text = body.trim()
+    if (!text && progress == null) throw new Error('Write something or set the progress')
+    const now = this.now()
+    const value = progress == null ? null : clampPercent(progress)
+    const id = transaction(this.db, () => {
+      if (value != null) this.db.run('UPDATE goals SET progress = ?, updated_at = ? WHERE id = ?', [value, now, goalId])
+      return this.db.run('INSERT INTO goal_notes (goal_id, body, progress, created_at) VALUES (?, ?, ?, ?)', [goalId, text, value, now]).lastId
+    })
+    this.notify('goals')
+    return toNote(this.db.get('SELECT * FROM goal_notes WHERE id = ?', [id])!)
+  }
+
+  deleteGoalNote(id: T.ID): void {
+    this.db.run('DELETE FROM goal_notes WHERE id = ?', [id])
+    this.notify('goals')
+  }
+
+  /** Time worked on a goal (and its tasks) per day. */
+  getGoalDays(goalId: T.ID, fromKey: string, toKey: string): T.DayValue[] {
+    const now = this.now()
+    const from = startOfDayMs(fromKey)
+    const to = endOfDayMs(toKey)
+    const rows = this.db.all(
+      `SELECT e.start_ms AS s, COALESCE(e.end_ms, ?) AS e FROM time_entries e LEFT JOIN tasks t ON t.id = e.task_id
+       WHERE (e.goal_id = ? OR t.goal_id = ?) AND COALESCE(e.end_ms, ?) > ? AND e.start_ms < ?`,
+      [now, goalId, goalId, now, from, to]
+    ) as { s: number; e: number }[]
+    const totals = spreadByDay(rows, from, to)
+    return eachDay(fromKey, toKey, (key) => totals.get(key) ?? 0)
+  }
+
+  private goalStreaks(onlyGoal?: T.ID): Map<T.ID, number> {
+    const since = startOfDayMs(addDays(todayKey(this.now()), -400))
+    const rows = this.db.all(
+      `SELECT COALESCE(e.goal_id, t.goal_id) AS gid, e.start_ms AS at FROM time_entries e LEFT JOIN tasks t ON t.id = e.task_id
+         WHERE COALESCE(e.goal_id, t.goal_id) IS NOT NULL AND e.start_ms >= ?
+       UNION ALL SELECT goal_id AS gid, created_at AS at FROM goal_notes WHERE created_at >= ?`,
+      [since, since]
+    )
+    const days = new Map<T.ID, Set<string>>()
+    for (const r of rows) {
+      if (onlyGoal != null && r.gid !== onlyGoal) continue
+      const set = days.get(r.gid) ?? new Set<string>()
+      set.add(dayKey(r.at as number))
+      days.set(r.gid, set)
+    }
+    const today = todayKey(this.now())
+    return new Map([...days].map(([id, set]) => [id, currentStreak(set, today)]))
   }
 
   // ------------------------------------------------------ categories & apps
@@ -631,6 +962,135 @@ export class Service {
     return { app, created }
   }
 
+  getAppLink(appId: T.ID): T.AppLink | null {
+    const row = this.db.get('SELECT * FROM app_links WHERE app_id = ?', [appId])
+    return row ? toLink(row) : null
+  }
+
+  /** Remembers which store/platform entry a tracked app is (Steam app, Roblox…). */
+  setAppLink(link: T.AppLink): void {
+    const current = this.getAppLink(link.appId)
+    if (current && JSON.stringify(current) === JSON.stringify(link)) return
+    this.db.run(
+      `INSERT INTO app_links (app_id, provider, external_id, name, image_url, store_url) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(app_id) DO UPDATE SET provider = excluded.provider, external_id = excluded.external_id,
+         name = excluded.name, image_url = excluded.image_url, store_url = excluded.store_url`,
+      [link.appId, link.provider, link.externalId, link.name, link.imageUrl, link.storeUrl]
+    )
+    this.notify('meta')
+  }
+
+  /** Quick numbers for a running game's presence card. */
+  getAppTotals(appId: T.ID): { totalMs: number; todayMs: number; streak: number } {
+    const today = todayKey(this.now())
+    const total = this.db.get('SELECT COALESCE(SUM(end_ms - start_ms), 0) AS ms FROM activity_sessions WHERE app_id = ?', [appId])!.ms as number
+    const days = this.appDays(appId, addDays(today, -120))
+    return { totalMs: total, todayMs: days.get(today) ?? 0, streak: currentStreak(this.streakDays(days), today) }
+  }
+
+  getAppStreaks(): T.AppStreak[] {
+    const today = todayKey(this.now())
+    const from = startOfDayMs(addDays(today, -120))
+    const perApp = new Map<T.ID, Map<string, number>>()
+    for (const r of this.db.all('SELECT app_id AS a, start_ms AS s, end_ms AS e FROM activity_sessions WHERE end_ms > ?', [from])) {
+      const days = perApp.get(r.a) ?? new Map<string, number>()
+      bump(days, dayKey(Math.max(r.s as number, from)), (r.e as number) - Math.max(r.s as number, from))
+      perApp.set(r.a, days)
+    }
+    return [...perApp]
+      .map(([appId, days]) => ({ appId, streak: currentStreak(this.streakDays(days), today) }))
+      .filter((x) => x.streak > 0)
+  }
+
+  private appDays(appId: T.ID, fromKey: string): Map<string, number> {
+    const from = startOfDayMs(fromKey)
+    const rows = this.db.all('SELECT start_ms AS s, end_ms AS e FROM activity_sessions WHERE app_id = ? AND end_ms > ?', [appId, from]) as {
+      s: number
+      e: number
+    }[]
+    return spreadByDay(rows, from, Number.MAX_SAFE_INTEGER)
+  }
+
+  private streakDays(days: Map<string, number>): Set<string> {
+    return new Set([...days].filter(([, ms]) => ms >= STREAK_MIN_MS).map(([d]) => d))
+  }
+
+  /** All-time report for one app. */
+  getAppReport(appId: T.ID): T.AppReport {
+    const row = this.db.get('SELECT * FROM apps WHERE id = ?', [appId])
+    if (!row) throw new Error('App not found')
+    const app = toApp(row)
+    const today = todayKey(this.now())
+    const spans = this.db.all('SELECT start_ms AS s, end_ms AS e FROM activity_sessions WHERE app_id = ? ORDER BY start_ms', [appId]) as {
+      s: number
+      e: number
+    }[]
+    const perDay = spreadByDay(spans, 0, Number.MAX_SAFE_INTEGER)
+    const byHour = new Array<number>(24).fill(0)
+    let totalMs = 0
+    let longestRunMs = 0
+    let runStart = 0
+    let runEnd = -Infinity
+    for (const { s, e } of spans) {
+      totalMs += e - s
+      if (s - runEnd > MINUTE) runStart = s
+      runEnd = Math.max(runEnd, e)
+      longestRunMs = Math.max(longestRunMs, runEnd - runStart)
+      let t = s
+      while (t < e) {
+        const d = new Date(t)
+        const next = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1).getTime()
+        const chunkEnd = Math.min(e, next)
+        byHour[d.getHours()] += chunkEnd - t
+        t = chunkEnd
+      }
+    }
+    const byWeekday = new Array<number>(7).fill(0)
+    for (const [key, ms] of perDay) byWeekday[weekday(key)] += ms
+    const months = new Map<string, number>()
+    for (const [key, ms] of perDay) bump(months, key.slice(0, 7), ms)
+    const monthly: T.MonthValue[] = []
+    const anchor = new Date(this.now())
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1)
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      monthly.push({ month, value: months.get(month) ?? 0 })
+    }
+    const titleRows = this.db.all(
+      `SELECT title, SUM(end_ms - start_ms) AS ms FROM activity_sessions WHERE app_id = ? AND title != ''
+       GROUP BY title ORDER BY ms DESC LIMIT 300`,
+      [appId]
+    )
+    const projects = new Map<string, number>()
+    if (isCodeEditor(app.exeName)) {
+      for (const r of titleRows) {
+        const name = editorProject(app.exeName, r.title)
+        if (name) bump(projects, name, r.ms as number)
+      }
+    }
+    const activeDaySet = [...perDay].filter(([, ms]) => ms >= MINUTE).map(([d]) => d)
+    const streakSet = this.streakDays(perDay)
+    return {
+      app,
+      link: this.getAppLink(appId),
+      totalMs,
+      sessions: spans.length,
+      activeDays: activeDaySet.length,
+      firstSeen: spans.length ? spans[0].s : null,
+      lastUsed: spans.length ? Math.max(...spans.slice(-50).map((x) => x.e)) : null,
+      longestRunMs,
+      avgPerActiveDayMs: activeDaySet.length ? totalMs / activeDaySet.length : 0,
+      streak: currentStreak(streakSet, today),
+      bestStreak: longestStreak(streakSet),
+      daily: eachDay(addDays(today, -370), today, (key) => perDay.get(key) ?? 0),
+      monthly,
+      byHour,
+      byWeekday,
+      topTitles: titleRows.slice(0, 30).map((r) => ({ title: r.title as string, ms: r.ms as number })),
+      projects: [...projects].map(([name, ms]) => ({ name, ms })).sort((a, b) => b.ms - a.ms).slice(0, 20)
+    }
+  }
+
   // --------------------------------------------------------- activity tracking
 
   listSessions(from: number, to: number): T.ActivitySession[] {
@@ -677,15 +1137,16 @@ export class Service {
       else if (cur) this.dropIfEmpty('activity_sessions', cur)
       if (!cur || !continuous || cur.appId !== app.id) this.appSince = s.at
       const match = this.matchRules(app.id, title)
+      const ruleTarget = match.taskId != null || match.goalId != null ? { taskId: match.taskId, goalId: match.goalId } : null
       const { lastId } = this.db.run(
         'INSERT INTO activity_sessions (app_id, title, start_ms, end_ms, task_id, category_id) VALUES (?, ?, ?, ?, ?, ?)',
         [app.id, title, s.at, s.at, timer?.taskId ?? match.taskId, match.categoryId]
       )
-      this.cur = { id: lastId, appId: app.id, title, start: s.at, end: s.at, ruleTaskId: match.taskId }
+      this.cur = { id: lastId, appId: app.id, title, start: s.at, end: s.at, ruleTarget }
     }
 
     // A running timer wins over rule-based attribution, so time is never counted twice.
-    this.trackRuleTime(timer ? null : (this.cur?.ruleTaskId ?? null), s.at, maxGap)
+    this.trackRuleTime(timer ? null : (this.cur?.ruleTarget ?? null), s.at, maxGap)
     this.notify('activity')
     return { state: 'active', app, title, since: this.appSince, created }
   }
@@ -716,11 +1177,12 @@ export class Service {
     if (span.end - span.start < MIN_SPAN_MS) this.db.run(`DELETE FROM ${table} WHERE id = ?`, [span.id])
   }
 
-  private trackRuleTime(taskId: T.ID | null, at: number, maxGap: number): void {
+  private trackRuleTime(target: Target | null, at: number, maxGap: number): void {
     const entry = this.ruleEntry
     const continuous = entry != null && at - entry.end <= maxGap
-    if (entry && continuous && entry.taskId === taskId) {
+    if (entry && continuous && sameTarget(entry, target)) {
       this.extendSpan('time_entries', entry, at)
+      if (entry.taskId != null) this.checkTargets()
       this.notify('time')
       return
     }
@@ -728,12 +1190,12 @@ export class Service {
       if (continuous) this.extendSpan('time_entries', entry, at)
       this.finishRuleEntry()
     }
-    if (taskId != null) {
+    if (target) {
       const { lastId } = this.db.run(
-        `INSERT INTO time_entries (task_id, start_ms, end_ms, source, note) VALUES (?, ?, ?, 'rule', '')`,
-        [taskId, at, at]
+        `INSERT INTO time_entries (task_id, goal_id, start_ms, end_ms, source, note) VALUES (?, ?, ?, ?, 'rule', '')`,
+        [target.taskId, target.goalId, at, at]
       )
-      this.ruleEntry = { id: lastId, taskId, start: at, end: at }
+      this.ruleEntry = { id: lastId, taskId: target.taskId, goalId: target.goalId, start: at, end: at }
       this.notify('time')
     }
   }
@@ -756,14 +1218,15 @@ export class Service {
 
   saveRule(input: T.RuleInput): T.Rule {
     const pattern = input.titlePattern.trim()
+    const goalId = input.goalId ?? null
     if (input.appId == null && !pattern) throw new Error('A rule needs an app or a title pattern')
-    if (input.taskId == null && input.categoryId == null) throw new Error('A rule needs a task or a category')
-    const values: SqlValue[] = [input.appId, pattern, input.taskId, input.categoryId]
+    if (input.taskId == null && goalId == null && input.categoryId == null) throw new Error('A rule needs a task, goal or category')
+    const values: SqlValue[] = [input.appId, pattern, input.taskId, goalId, input.categoryId]
     let id = input.id
     if (id != null) {
-      this.db.run('UPDATE rules SET app_id = ?, title_pattern = ?, task_id = ?, category_id = ? WHERE id = ?', [...values, id])
+      this.db.run('UPDATE rules SET app_id = ?, title_pattern = ?, task_id = ?, goal_id = ?, category_id = ? WHERE id = ?', [...values, id])
     } else {
-      id = this.db.run('INSERT INTO rules (app_id, title_pattern, task_id, category_id, created_at) VALUES (?, ?, ?, ?, ?)', [
+      id = this.db.run('INSERT INTO rules (app_id, title_pattern, task_id, goal_id, category_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
         ...values,
         this.now()
       ]).lastId
@@ -802,16 +1265,365 @@ export class Service {
     return changed
   }
 
-  private matchRules(appId: T.ID, title: string): { taskId: T.ID | null; categoryId: T.ID | null } {
-    let taskId: T.ID | null = null
+  private matchRules(appId: T.ID, title: string): { taskId: T.ID | null; goalId: T.ID | null; categoryId: T.ID | null } {
+    let target: Target | null = null
     let categoryId: T.ID | null = null
     for (const r of this.rules()) {
       if (r.appId != null && r.appId !== appId) continue
       if (!patternMatches(r.titlePattern, title)) continue
-      taskId ??= r.taskId
+      if (!target && (r.taskId != null || r.goalId != null)) target = { taskId: r.taskId, goalId: r.goalId }
       categoryId ??= r.categoryId
     }
-    return { taskId, categoryId }
+    return { taskId: target?.taskId ?? null, goalId: target?.goalId ?? null, categoryId }
+  }
+
+  // --------------------------------------------------------------------- music
+
+  /** Folds a media-player sample into the listening history (like activity sessions). */
+  recordMedia(s: MediaSample, intervalMs: number): void {
+    const maxGap = intervalMs * 2 + 2000
+    const cur = this.media
+    if (!s.playing || !s.title) {
+      if (cur) this.finishMedia(cur, s.at, maxGap)
+      this.media = null
+      return
+    }
+    const continuous = cur != null && s.at - cur.end <= maxGap
+    if (cur && continuous && cur.source === s.source && cur.title === s.title && cur.artist === s.artist) {
+      this.extendSpan('media_sessions', cur, s.at)
+    } else {
+      if (cur) this.finishMedia(cur, s.at, maxGap)
+      const { lastId } = this.db.run(
+        'INSERT INTO media_sessions (source, title, artist, album, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)',
+        [s.source, s.title.slice(0, MAX_TITLE_LENGTH), s.artist.slice(0, MAX_TITLE_LENGTH), s.album.slice(0, MAX_TITLE_LENGTH), s.at, s.at]
+      )
+      this.media = { id: lastId, source: s.source, title: s.title, artist: s.artist, start: s.at, end: s.at }
+    }
+    this.notify('music')
+  }
+
+  closeMedia(at: number): void {
+    if (this.media) this.finishMedia(this.media, at, 0)
+    this.media = null
+  }
+
+  private finishMedia(cur: OpenMedia, at: number, maxGap: number): void {
+    if (at - cur.end <= maxGap) this.extendSpan('media_sessions', cur, at)
+    if (cur.end - cur.start < MIN_MEDIA_MS) this.db.run('DELETE FROM media_sessions WHERE id = ?', [cur.id])
+    this.notify('music')
+  }
+
+  /** Inserts a finished listening session directly (demo data). */
+  seedMedia(source: string, title: string, artist: string, album: string, start: number, end: number): void {
+    this.db.run('INSERT INTO media_sessions (source, title, artist, album, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)', [
+      source, title, artist, album, start, end
+    ])
+  }
+
+  getMusic(from: number, to: number): T.MusicSummary {
+    const rows = this.db.all('SELECT * FROM media_sessions WHERE end_ms > ? AND start_ms < ? ORDER BY start_ms DESC', [from, to]).map(toMedia)
+    const artists = new Map<string, { ms: number; plays: number }>()
+    const tracks = new Map<string, { title: string; artist: string; ms: number; plays: number }>()
+    const sources = new Map<string, number>()
+    let totalMs = 0
+    for (const m of rows) {
+      const ms = clipDuration(m.start, m.end, from, to)
+      totalMs += ms
+      if (m.artist) {
+        const a = artists.get(m.artist) ?? { ms: 0, plays: 0 }
+        a.ms += ms
+        a.plays++
+        artists.set(m.artist, a)
+      }
+      const key = `${m.title}\u0000${m.artist}`
+      const t = tracks.get(key) ?? { title: m.title, artist: m.artist, ms: 0, plays: 0 }
+      t.ms += ms
+      t.plays++
+      tracks.set(key, t)
+      bump(sources, m.source, ms)
+    }
+    return {
+      totalMs,
+      plays: rows.length,
+      topArtists: [...artists].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.ms - a.ms).slice(0, 10),
+      topTracks: [...tracks.values()].sort((a, b) => b.ms - a.ms).slice(0, 10),
+      bySource: [...sources].map(([source, ms]) => ({ source, ms })).sort((a, b) => b.ms - a.ms),
+      recent: rows.slice(0, 20)
+    }
+  }
+
+  // ------------------------------------------------------------------ calendar
+
+  /** Replaces a calendar's events inside [from, to) with a fresh sync. */
+  replaceCalendarEvents(source: string, from: number, to: number, events: Omit<T.CalendarEvent, 'id' | 'source'>[]): void {
+    transaction(this.db, () => {
+      this.db.run('DELETE FROM calendar_events WHERE source = ? AND start_ms < ? AND end_ms > ?', [source, to, from])
+      for (const e of events) {
+        this.db.run(
+          'INSERT INTO calendar_events (source, uid, title, location, start_ms, end_ms, all_day, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [source, e.uid, e.title, e.location, e.start, e.end, e.allDay ? 1 : 0, e.color]
+        )
+      }
+    })
+    this.notify('calendar')
+  }
+
+  deleteCalendarSource(source: string): void {
+    this.db.run('DELETE FROM calendar_events WHERE source = ?', [source])
+    this.notify('calendar')
+  }
+
+  listCalendarEvents(from: number, to: number): T.CalendarEvent[] {
+    return this.db.all('SELECT * FROM calendar_events WHERE end_ms > ? AND start_ms < ? ORDER BY all_day DESC, start_ms', [from, to]).map(toEvent)
+  }
+
+  // ------------------------------------------------------------------- library
+
+  listLibrary(filter: { kind?: T.LibraryKind; status?: T.LibraryStatus; favorite?: boolean } = {}): T.LibraryItem[] {
+    const where: string[] = []
+    const params: SqlValue[] = []
+    if (filter.kind) {
+      where.push('l.kind = ?')
+      params.push(filter.kind)
+    }
+    if (filter.status) {
+      where.push('l.status = ?')
+      params.push(filter.status)
+    }
+    if (filter.favorite) where.push('l.favorite = 1')
+    const clause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+    return this.db.all(`${LIBRARY_SELECT} ${clause} ORDER BY l.updated_at DESC`, params).map(toLibrary)
+  }
+
+  getLibraryItem(id: T.ID): T.LibraryItem | null {
+    const row = this.db.get(`${LIBRARY_SELECT} WHERE l.id = ?`, [id])
+    return row ? toLibrary(row) : null
+  }
+
+  /**
+   * Creates or edits a library item. Progress drives the status: starting a
+   * planned item makes it active, reaching the total completes it. Changing
+   * the status by hand stops automatic status updates for the item.
+   */
+  saveLibraryItem(input: T.LibraryInput): T.LibraryItem {
+    const now = this.now()
+    const title = required(input.title, 'Title')
+    const current = input.id != null ? this.getLibraryItem(input.id) : null
+    if (input.id != null && !current) throw new Error('Library item not found')
+    const total = input.total === undefined ? (current?.total ?? null) : input.total == null ? null : Math.max(0, Math.round(input.total))
+    let progress = Math.max(0, Math.round(input.progress ?? current?.progress ?? 0))
+    if (total != null && total > 0) progress = Math.min(progress, total)
+    const progressChanged = current ? progress !== current.progress : progress > 0
+    let status: T.LibraryStatus = input.status ?? current?.status ?? 'planned'
+    if (progressChanged && total && progress >= total && ['active', 'planned', 'rewatching'].includes(status)) status = 'completed'
+    else if (progressChanged && progress > 0 && status === 'planned') status = 'active'
+    const statusChangedByHand = current != null && input.status !== undefined && input.status !== current.status
+    const statusAuto = input.statusAuto ?? (statusChangedByHand ? false : (current?.statusAuto ?? true))
+    const rating = input.rating === undefined ? (current?.rating ?? null) : input.rating == null ? null : Math.min(10, Math.max(1, Math.round(input.rating)))
+    const startedAt = current?.startedAt ?? (status === 'active' || status === 'completed' ? now : null)
+    const finishedAt = status === 'completed' ? (current?.status === 'completed' ? current.finishedAt : now) : null
+    const values: SqlValue[] = [
+      input.kind, title, input.originalTitle ?? current?.originalTitle ?? '',
+      input.coverUrl === undefined ? (current?.coverUrl ?? null) : input.coverUrl, status,
+      (input.favorite ?? current?.favorite ?? false) ? 1 : 0, progress, total, rating, input.notes ?? current?.notes ?? '',
+      input.year === undefined ? (current?.year ?? null) : input.year, input.format ?? current?.format ?? '',
+      input.url === undefined ? (current?.url ?? null) : input.url, input.appId === undefined ? (current?.appId ?? null) : input.appId,
+      statusAuto ? 1 : 0, now, startedAt, finishedAt
+    ]
+    let id = input.id
+    if (current) {
+      this.db.run(
+        `UPDATE library_items SET kind = ?, title = ?, original_title = ?, cover_url = ?, status = ?, favorite = ?, progress = ?,
+          total = ?, rating = ?, notes = ?, year = ?, format = ?, url = ?, app_id = ?, status_auto = ?, updated_at = ?,
+          started_at = ?, finished_at = ? WHERE id = ?`,
+        [...values, current.id]
+      )
+    } else {
+      id = this.db.run(
+        `INSERT INTO library_items (kind, title, original_title, cover_url, status, favorite, progress, total, rating, notes,
+          year, format, url, app_id, status_auto, updated_at, started_at, finished_at, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)`,
+        [...values, now]
+      ).lastId
+    }
+    this.notify('library')
+    return this.getLibraryItem(id!)!
+  }
+
+  /** +1 episode / chapter (or −1); completes the item when it reaches the total. */
+  bumpLibraryProgress(id: T.ID, delta = 1): T.LibraryItem {
+    const item = this.getLibraryItem(id)
+    if (!item) throw new Error('Library item not found')
+    return this.saveLibraryItem({ id, kind: item.kind, title: item.title, progress: item.progress + delta })
+  }
+
+  deleteLibraryItem(id: T.ID): void {
+    this.db.run('DELETE FROM library_items WHERE id = ?', [id])
+    this.notify('library')
+  }
+
+  /**
+   * Merges items from a connected service. Items whose status you changed by
+   * hand keep your status; everything else follows the service.
+   */
+  importLibrary(
+    source: T.LibrarySource,
+    items: T.LibraryImport[],
+    opts: { removeMissing?: boolean; kinds?: T.LibraryKind[] } = {}
+  ): { added: number; updated: number; removed: number } {
+    const now = this.now()
+    let added = 0
+    let updated = 0
+    let removed = 0
+    transaction(this.db, () => {
+      for (const it of items) {
+        const row = this.db.get('SELECT * FROM library_items WHERE source = ? AND external_id = ?', [source, it.externalId])
+        const status = it.status
+        const favorite = it.favorite ? 1 : 0
+        const progress = Math.max(0, Math.round(it.progress ?? 0))
+        if (!row) {
+          this.db.run(
+            `INSERT INTO library_items (kind, title, original_title, cover_url, status, favorite, progress, total, latest, rating,
+              year, format, source, external_id, url, app_id, status_auto, created_at, updated_at, started_at, finished_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+            [
+              it.kind, it.title, it.originalTitle ?? '', it.coverUrl ?? null, status, favorite, progress, it.total ?? null,
+              it.latest ?? null, it.rating ?? null, it.year ?? null, it.format ?? '', source, it.externalId, it.url ?? null,
+              it.appId ?? null, now, now, status === 'active' || status === 'completed' ? now : null, status === 'completed' ? now : null
+            ]
+          )
+          added++
+          continue
+        }
+        const auto = bool(row.status_auto)
+        const next = {
+          kind: it.kind, title: it.title, original_title: it.originalTitle ?? row.original_title, cover_url: it.coverUrl ?? row.cover_url,
+          total: it.total ?? row.total, latest: it.latest ?? row.latest, year: it.year ?? row.year, format: it.format ?? row.format,
+          url: it.url ?? row.url, app_id: it.appId ?? row.app_id,
+          status: auto ? status : row.status, favorite: auto ? favorite : row.favorite, progress: auto ? progress : row.progress,
+          rating: auto ? (it.rating ?? row.rating) : row.rating
+        }
+        const changed = (Object.keys(next) as (keyof typeof next)[]).some((k) => (next[k] ?? null) !== (row[k] ?? null))
+        if (!changed) continue
+        this.db.run(
+          `UPDATE library_items SET kind = ?, title = ?, original_title = ?, cover_url = ?, total = ?, latest = ?, year = ?, format = ?,
+            url = ?, app_id = ?, status = ?, favorite = ?, progress = ?, rating = ?, updated_at = ?,
+            started_at = COALESCE(started_at, ?), finished_at = ? WHERE id = ?`,
+          [
+            next.kind, next.title, next.original_title, next.cover_url, next.total, next.latest, next.year, next.format, next.url,
+            next.app_id, next.status, next.favorite, next.progress, next.rating, now,
+            next.status === 'active' || next.status === 'completed' ? now : null,
+            next.status === 'completed' ? (row.finished_at ?? now) : null, row.id
+          ]
+        )
+        updated++
+      }
+      if (opts.removeMissing) {
+        const keep = new Set(items.map((i) => i.externalId))
+        const kinds = opts.kinds ? new Set<string>(opts.kinds) : null
+        for (const r of this.db.all('SELECT id, external_id, kind FROM library_items WHERE source = ?', [source])) {
+          if (keep.has(r.external_id) || (kinds && !kinds.has(r.kind))) continue
+          this.db.run('DELETE FROM library_items WHERE id = ?', [r.id])
+          removed++
+        }
+      }
+    })
+    if (added || updated || removed) this.notify('library')
+    return { added, updated, removed }
+  }
+
+  /**
+   * Keeps games in the library in step with the tracker: a game you played
+   * in the last two weeks is "playing", one untouched for a month is "on hold".
+   */
+  refreshGamesInLibrary(): number {
+    const now = this.now()
+    const recent = now - 14 * DAY
+    const stale = now - 30 * DAY
+    const games = this.db.all(
+      `SELECT a.id, a.display_name, k.provider, k.external_id, k.name AS link_name, k.image_url,
+         (SELECT MAX(s.end_ms) FROM activity_sessions s WHERE s.app_id = a.id) AS last
+       FROM apps a LEFT JOIN app_links k ON k.app_id = a.id WHERE a.is_game = 1 AND a.ignored = 0`
+    )
+    let changed = 0
+    transaction(this.db, () => {
+      for (const g of games) {
+        if (g.last == null) continue
+        let item = this.db.get('SELECT * FROM library_items WHERE app_id = ? LIMIT 1', [g.id])
+        if (!item && g.provider === 'steam') {
+          item = this.db.get(`SELECT * FROM library_items WHERE source = 'steam' AND external_id = ?`, [g.external_id])
+        }
+        if (!item) {
+          const status: T.LibraryStatus = g.last >= recent ? 'active' : 'on_hold'
+          this.db.run(
+            `INSERT INTO library_items (kind, title, cover_url, status, source, external_id, app_id, status_auto, created_at, updated_at, started_at)
+             VALUES ('game', ?, ?, ?, 'tracker', ?, ?, 1, ?, ?, ?)`,
+            [g.link_name ?? g.display_name, g.image_url ?? null, status, String(g.id), g.id, now, now, now]
+          )
+          changed++
+          continue
+        }
+        let status: string = item.status
+        if (bool(item.status_auto)) {
+          if (g.last >= recent && ['planned', 'on_hold', 'dropped'].includes(status)) status = 'active'
+          else if (g.last < stale && status === 'active') status = 'on_hold'
+        }
+        if (status !== item.status || item.app_id == null) {
+          this.db.run('UPDATE library_items SET status = ?, app_id = ?, updated_at = ?, started_at = COALESCE(started_at, ?) WHERE id = ?', [
+            status, g.id, now, now, item.id
+          ])
+          changed++
+        }
+      }
+    })
+    if (changed) this.notify('library')
+    return changed
+  }
+
+  // --------------------------------------------------- connections & external
+
+  getIntegration(key: string): IntegrationRow {
+    const row = this.db.get('SELECT * FROM integrations WHERE key = ?', [key])
+    if (!row) return { enabled: false, config: {}, state: {}, updatedAt: 0 }
+    return { enabled: bool(row.enabled), config: JSON.parse(row.config), state: JSON.parse(row.state), updatedAt: row.updated_at }
+  }
+
+  /** Shallow-merges config/state into the stored integration row. */
+  saveIntegration(key: string, patch: { enabled?: boolean; config?: Record<string, unknown>; state?: Record<string, unknown> }): IntegrationRow {
+    const current = this.getIntegration(key)
+    const next = {
+      enabled: patch.enabled ?? current.enabled,
+      config: { ...current.config, ...patch.config },
+      state: { ...current.state, ...patch.state },
+      updatedAt: this.now()
+    }
+    this.db.run(
+      `INSERT INTO integrations (key, enabled, config, state, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET enabled = excluded.enabled, config = excluded.config, state = excluded.state,
+         updated_at = excluded.updated_at`,
+      [key, next.enabled ? 1 : 0, JSON.stringify(next.config), JSON.stringify(next.state), next.updatedAt]
+    )
+    this.notify('connections')
+    return next
+  }
+
+  /** Per-day numbers from a connected service (e.g. GitHub contributions). */
+  setExternalDays(provider: string, days: T.DayValue[]): void {
+    transaction(this.db, () => {
+      for (const d of days) {
+        this.db.run(
+          'INSERT INTO external_days (provider, date, value) VALUES (?, ?, ?) ON CONFLICT(provider, date) DO UPDATE SET value = excluded.value',
+          [provider, d.date, d.value]
+        )
+      }
+    })
+    this.notify('external')
+  }
+
+  getExternalDays(provider: string, fromKey: string, toKey: string): T.DayValue[] {
+    const rows = this.db.all('SELECT date, value FROM external_days WHERE provider = ? AND date >= ? AND date <= ?', [provider, fromKey, toKey])
+    const values = new Map(rows.map((r) => [r.date as string, r.value as number]))
+    return eachDay(fromKey, toKey, (key) => values.get(key) ?? 0)
   }
 
   // --------------------------------------------------------------------- stats
@@ -830,7 +1642,7 @@ export class Service {
       bump(byApp, s.appId, ms)
       bump(byCategory, s.categoryId, ms)
       if (s.title) {
-        const key = `${s.appId} ${s.title}`
+        const key = `${s.appId}\u0000${s.title}`
         const item = byTitle.get(key) ?? { appId: s.appId, title: s.title, ms: 0 }
         item.ms += ms
         byTitle.set(key, item)
@@ -856,30 +1668,34 @@ export class Service {
   }
 
   /** Active (foreground, non-idle) milliseconds per local day; sessions are split at midnight. */
-  getDailyActive(fromKey: string, toKey: string): T.DayValue[] {
+  getDailyActive(fromKey: string, toKey: string, appId?: T.ID): T.DayValue[] {
     const from = startOfDayMs(fromKey)
     const to = endOfDayMs(toKey)
-    const totals = new Map<string, number>()
+    const params: SqlValue[] = [from, to]
+    let onlyApp = ''
+    if (appId != null) {
+      onlyApp = ' AND s.app_id = ?'
+      params.push(appId)
+    }
     const rows = this.db.all(
       `SELECT s.start_ms AS s, s.end_ms AS e FROM activity_sessions s JOIN apps a ON a.id = s.app_id
-       WHERE a.ignored = 0 AND s.end_ms > ? AND s.start_ms < ?`,
-      [from, to]
-    )
-    for (const r of rows) {
-      let start = Math.max(r.s as number, from)
-      const end = Math.min(r.e as number, to)
-      while (start < end) {
-        const key = dayKey(start)
-        const chunkEnd = Math.min(end, endOfDayMs(key))
-        bump(totals, key, chunkEnd - start)
-        start = chunkEnd
-      }
-    }
+       WHERE a.ignored = 0 AND s.end_ms > ? AND s.start_ms < ?${onlyApp}`,
+      params
+    ) as { s: number; e: number }[]
+    const totals = spreadByDay(rows, from, to)
     return eachDay(fromKey, toKey, (key) => totals.get(key) ?? 0)
+  }
+
+  /** Active milliseconds per month in [fromKey, toKey]. */
+  getMonthlyActive(fromKey: string, toKey: string, appId?: T.ID): T.MonthValue[] {
+    const months = new Map<string, number>()
+    for (const d of this.getDailyActive(fromKey, toKey, appId)) bump(months, d.date.slice(0, 7), d.value)
+    return [...months].map(([month, value]) => ({ month, value }))
   }
 
   getHeatmap(metric: T.HeatmapMetric, fromKey: string, toKey: string): T.DayValue[] {
     if (metric === 'active') return this.getDailyActive(fromKey, toKey)
+    if (metric === 'github') return this.getExternalDays('github', fromKey, toKey)
     const counts = new Map<string, number>()
     const rows = this.db.all(`SELECT closed_at AS c FROM tasks WHERE status = 'closed' AND closed_at >= ? AND closed_at < ?`, [
       startOfDayMs(fromKey),
@@ -892,7 +1708,8 @@ export class Service {
   /** GitHub-style activity feed for the last `days` days, newest first. */
   getFeed(days = 14): T.FeedEvent[] {
     const now = this.now()
-    const from = startOfDayMs(addDays(todayKey(now), -(days - 1)))
+    const fromKey = addDays(todayKey(now), -(days - 1))
+    const from = startOfDayMs(fromKey)
     const events: T.FeedEvent[] = []
 
     for (const r of this.db.all('SELECT id, number, title, created_at FROM tasks WHERE created_at >= ?', [from])) {
@@ -901,12 +1718,20 @@ export class Service {
     for (const r of this.db.all(`SELECT id, number, title, closed_at FROM tasks WHERE status = 'closed' AND closed_at >= ?`, [from])) {
       events.push({ kind: 'task_closed', at: r.closed_at, taskId: r.id, number: r.number, title: r.title })
     }
+    for (const r of this.db.all('SELECT n.goal_id, n.body, n.created_at, g.title FROM goal_notes n JOIN goals g ON g.id = n.goal_id WHERE n.created_at >= ?', [from])) {
+      if (r.body) events.push({ kind: 'goal_note', at: r.created_at, goalId: r.goal_id, title: r.title, body: r.body })
+    }
+    for (const r of this.db.all(`SELECT id, title, achieved_at FROM goals WHERE status = 'achieved' AND achieved_at >= ?`, [from])) {
+      events.push({ kind: 'goal_achieved', at: r.achieved_at, goalId: r.id, title: r.title })
+    }
 
     const logged = new Map<string, Extract<T.FeedEvent, { kind: 'time_logged' }>>()
     for (const e of this.listTimeEntries({ from })) {
       if (e.end == null) continue
-      const key = `${e.taskId}|${dayKey(e.end)}`
-      const item = logged.get(key) ?? { kind: 'time_logged', at: e.end, taskId: e.taskId, number: e.taskNumber, title: e.taskTitle, ms: 0 }
+      const key = `${e.taskId ?? `g${e.goalId}`}|${dayKey(e.end)}`
+      const item = logged.get(key) ?? {
+        kind: 'time_logged', at: e.end, taskId: e.taskId, goalId: e.goalId, number: e.taskNumber, title: e.title, ms: 0
+      }
       item.ms += e.end - e.start
       item.at = Math.max(item.at, e.end)
       logged.set(key, item)
@@ -927,6 +1752,9 @@ export class Service {
       const [top] = sortedItems(day.apps)
       events.push({ kind: 'day_summary', at: day.last, date, activeMs: day.total, topAppId: top?.id ?? null, topAppMs: top?.ms ?? 0 })
     }
+    for (const d of this.getExternalDays('github', fromKey, todayKey(now))) {
+      if (d.value > 0) events.push({ kind: 'external', at: Math.min(now, endOfDayMs(d.date) - 1), date: d.date, provider: 'github', value: d.value })
+    }
     return events.sort((a, b) => b.at - a.at)
   }
 
@@ -934,13 +1762,16 @@ export class Service {
 
   exportJson(): string {
     const tables: Record<string, Row[]> = {}
-    const names = ['settings', 'projects', 'labels', 'tasks', 'task_labels', 'time_entries', 'recurrences', 'categories', 'rules', 'activity_sessions']
+    const names = [
+      'settings', 'projects', 'labels', 'tasks', 'task_labels', 'time_entries', 'recurrences', 'categories', 'rules',
+      'activity_sessions', 'goals', 'goal_notes', 'media_sessions', 'calendar_events', 'app_links', 'external_days'
+    ]
     for (const name of names) tables[name] = this.db.all(`SELECT * FROM ${name}`)
     tables.apps = this.db.all('SELECT id, exe_path, exe_name, display_name, category_id, record_titles, ignored, is_game, first_seen FROM apps')
-    return JSON.stringify({ app: 'timehub', format: 1, exportedAt: new Date(this.now()).toISOString(), tables }, null, 2)
+    return JSON.stringify({ app: 'timehub', format: 2, exportedAt: new Date(this.now()).toISOString(), tables }, null, 2)
   }
 
-  /** One timeline CSV with both task time and app activity (UTF-8 with BOM for Excel). */
+  /** One timeline CSV with task/goal time, app activity and music (UTF-8 with BOM for Excel). */
   exportCsv(): string {
     const esc = (v: unknown): string => {
       const s = v == null ? '' : String(v)
@@ -954,10 +1785,14 @@ export class Service {
     const now = this.now()
     for (const e of this.listTimeEntries()) {
       const end = e.end ?? now
-      rows.push({ start: e.start, cells: ['task', iso(e.start), iso(end), minutes(end - e.start), `#${e.taskNumber} ${e.taskTitle}`, e.note || e.source, ''] })
+      const what = e.taskNumber != null ? `#${e.taskNumber} ${e.title}` : `🎯 ${e.title}`
+      rows.push({ start: e.start, cells: [e.taskId != null ? 'task' : 'goal', iso(e.start), iso(end), minutes(end - e.start), what, e.note || e.source, ''] })
     }
     for (const s of this.listSessions(0, Number.MAX_SAFE_INTEGER)) {
       rows.push({ start: s.start, cells: ['activity', iso(s.start), iso(s.end), minutes(s.end - s.start), apps.get(s.appId), s.title, categories.get(s.categoryId)] })
+    }
+    for (const m of this.db.all('SELECT * FROM media_sessions').map(toMedia)) {
+      rows.push({ start: m.start, cells: ['music', iso(m.start), iso(m.end), minutes(m.end - m.start), m.source, `${m.artist} — ${m.title}`, ''] })
     }
     rows.sort((a, b) => a.start - b.start)
     const header = ['type', 'start', 'end', 'minutes', 'app_or_task', 'title_or_note', 'category']

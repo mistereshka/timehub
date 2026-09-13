@@ -5,14 +5,14 @@ import {
 } from '@primer/octicons-react'
 import { useNavigate, useParams } from 'react-router'
 import { buildAgenda, type AgendaBlock } from '@shared/schedule'
-import { addDays, endOfDayMs, formatHM, startOfDayMs, todayKey } from '@shared/time'
+import { MINUTE, addDays, endOfDayMs, formatHM, startOfDayMs, todayKey } from '@shared/time'
 import { api } from '../api'
 import { useApp } from '../context'
 import { useQuery } from '../hooks'
 import { useI18n } from '../i18n'
-import { categoryName, dayLabel } from '../utils'
+import { categoryName, combineDateTime, dayLabel } from '../utils'
 import { AppIcon, AppUsageList, Blankslate, CategoryBar, Stat } from '../components/common'
-import { DayTimeline } from '../components/DayTimeline'
+import { DayTimeline, type PlanBlock } from '../components/DayTimeline'
 
 /** "What did I do that day": a visual timeline plus a readable agenda. */
 export function SchedulePage(): ReactNode {
@@ -28,12 +28,32 @@ export function SchedulePage(): ReactNode {
   const sessions = useQuery(() => api.listSessions(from, to), [day], ['activity', 'meta'])
   const entries = useQuery(() => api.listTimeEntries({ from, to }), [day], ['time'])
   const usage = useQuery(() => api.getUsage(from, to), [day], ['activity', 'time', 'tasks'])
+  const events = useQuery(() => api.listCalendarEvents(from, to), [day], ['calendar'])
+  const tasks = useQuery(() => api.listTasks(), [], ['tasks'])
   const agenda = useMemo(() => buildAgenda(sessions.data ?? [], { from, to }), [sessions.data, from, to])
+  const plan: PlanBlock[] = [
+    ...(events.data ?? [])
+      .filter((e) => !e.allDay)
+      .map((e) => ({ key: `ev${e.id}`, title: e.title, start: e.start, end: e.end, color: e.color, kind: 'event' as const })),
+    ...(tasks.data ?? [])
+      .filter((x) => x.plannedDate === day && x.plannedTime)
+      .map((x) => {
+        const start = combineDateTime(day, x.plannedTime!)
+        return {
+          key: `t${x.id}`,
+          title: `#${x.number} ${x.title}`,
+          start,
+          end: start + (x.estimateMin || 30) * MINUTE,
+          color: x.status === 'closed' ? 'var(--fgColor-done)' : 'var(--fgColor-accent)',
+          kind: 'task' as const
+        }
+      })
+  ]
   const go = (key: string): void => {
     void navigate(key === today ? '/schedule' : `/schedule/${key}`)
   }
   const u = usage.data
-  const hasData = (sessions.data?.length ?? 0) > 0 || (entries.data?.length ?? 0) > 0
+  const hasData = (sessions.data?.length ?? 0) > 0 || (entries.data?.length ?? 0) > 0 || plan.length > 0
 
   return (
     <div className="container">
@@ -43,8 +63,8 @@ export function SchedulePage(): ReactNode {
           <div className="muted cap">{dayLabel(day, i18n, 'EEEE, d MMMM yyyy')}</div>
         </div>
         <IconButton icon={ChevronLeftIcon} aria-label={t('schedule.prev')} onClick={() => go(addDays(day, -1))} />
-        <TextInput type="date" value={day} max={today} onChange={(e) => e.target.value && go(e.target.value)} aria-label={t('schedule.pickDate')} />
-        <IconButton icon={ChevronRightIcon} aria-label={t('schedule.next')} disabled={day >= today} onClick={() => go(addDays(day, 1))} />
+        <TextInput type="date" value={day} onChange={(e) => e.target.value && go(e.target.value)} aria-label={t('schedule.pickDate')} />
+        <IconButton icon={ChevronRightIcon} aria-label={t('schedule.next')} onClick={() => go(addDays(day, 1))} />
         <Button disabled={day === today} onClick={() => go(today)}>
           {t('common.today')}
         </Button>
@@ -68,7 +88,7 @@ export function SchedulePage(): ReactNode {
         <>
           <div className="schedule-grid">
             <div className="box">
-              <DayTimeline day={day} sessions={sessions.data ?? []} entries={entries.data ?? []} />
+              <DayTimeline day={day} sessions={sessions.data ?? []} entries={entries.data ?? []} plan={plan} />
             </div>
             <div className="box">
               <div className="box-header">

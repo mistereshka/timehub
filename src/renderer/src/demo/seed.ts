@@ -1,6 +1,6 @@
 import type { Service } from '@shared/service'
-import type { ID, Lang, Priority, RecurrenceRule } from '@shared/types'
-import { HOUR, MINUTE, addDays, startOfDayMs, todayKey, weekday } from '@shared/time'
+import type { CalendarEvent, DayValue, ID, LibraryImport, LibraryInput, Lang, Priority, RecurrenceRule } from '@shared/types'
+import { DAY, HOUR, MINUTE, addDays, startOfDayMs, todayKey, weekday } from '@shared/time'
 import { DEFAULT_LABELS } from '@shared/catalog'
 
 /** What the pretend tracker "sees" in the demo. */
@@ -10,6 +10,29 @@ export const DEMO_ACTIVITY = {
   title: 'TodayPage.tsx — timehub — Visual Studio Code',
   displayName: 'Visual Studio Code'
 }
+
+export const DEMO_GAME = {
+  name: 'Hades II',
+  steamId: '1145350',
+  header: 'https://cdn.akamai.steamstatic.com/steam/apps/1145350/header.jpg',
+  cover: 'https://cdn.akamai.steamstatic.com/steam/apps/1145350/library_600x900.jpg',
+  store: 'https://store.steampowered.com/app/1145350/'
+}
+
+export const DEMO_CALENDAR = 'demo-work'
+
+export const DEMO_TRACKS = [
+  { title: 'Get Lucky', artist: 'Daft Punk', album: 'Random Access Memories', sec: 369, hue: 40 },
+  { title: 'Weird Fishes/Arpeggi', artist: 'Radiohead', album: 'In Rainbows', sec: 318, hue: 200 },
+  { title: 'Группа крови', artist: 'Кино', album: 'Группа крови', sec: 286, hue: 0 },
+  { title: 'Midnight City', artist: 'M83', album: 'Hurry Up, We’re Dreaming', sec: 244, hue: 280 },
+  { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', sec: 200, hue: 350 },
+  { title: 'Nights', artist: 'Frank Ocean', album: 'Blonde', sec: 307, hue: 120 },
+  { title: 'Time', artist: 'Hans Zimmer', album: 'Inception', sec: 275, hue: 220 },
+  { title: 'Спокойная ночь', artist: 'Кино', album: 'Группа крови', sec: 363, hue: 20 },
+  { title: 'Kids', artist: 'MGMT', album: 'Oracular Spectacular', sec: 302, hue: 170 },
+  { title: 'Redbone', artist: 'Childish Gambino', album: 'Awaken, My Love!', sec: 327, hue: 300 }
+]
 
 type AppKey = 'code' | 'chrome' | 'telegram' | 'discord' | 'terminal' | 'figma' | 'obsidian' | 'spotify' | 'game' | 'word'
 
@@ -87,15 +110,72 @@ const WEEKEND_MIX: Segment[] = [
   { app: 'spotify', min: 2, max: 6, w: 0.7 }
 ]
 
+type Text = Record<Lang, string>
+
+interface GoalSpec {
+  title: Text
+  body: Text
+  emoji: string
+  color: string
+  auto?: boolean
+  progress?: number
+  targetIn?: number
+  /** days ago it was achieved */
+  achieved?: number
+  /** [days ago, note, progress] */
+  notes: [number, Text, number | null][]
+}
+
+const GOALS: GoalSpec[] = [
+  {
+    title: { en: 'English to B2', ru: 'Английский до B2' },
+    body: {
+      en: 'Speak freely at work and watch series without subtitles.\n\n- Tue and Fri — 2 hours of study\n- A speaking club once a month',
+      ru: 'Свободно говорить на созвонах и смотреть сериалы без субтитров.\n\n- Вторник и пятница — по 2 часа занятий\n- Раз в месяц — разговорный клуб'
+    },
+    emoji: '🗣️', color: '#0969da', progress: 40, targetIn: 110,
+    notes: [
+      [60, { en: 'Started English File Intermediate.', ru: 'Начал заниматься по English File Intermediate.' }, 20],
+      [30, { en: 'Five units done; watching series with English subtitles now.', ru: 'Прошёл 5 юнитов, смотрю сериалы с английскими субтитрами.' }, 30],
+      [6, { en: 'First speaking club — scary, but I understood almost everything 🎉', ru: 'Первый разговорный клуб — было страшно, но понял почти всё 🎉' }, 40]
+    ]
+  },
+  {
+    title: { en: 'Ship timehub 1.0', ru: 'Выпустить timehub 1.0' },
+    body: { en: 'Tracker, planning and reports good enough for daily use.', ru: 'Трекер, планирование и отчёты — чтобы пользоваться каждый день.' },
+    emoji: '🚀', color: '#1f883d', auto: true, targetIn: 30,
+    notes: [[4, { en: 'Goals and the library are working. Next: installer.', ru: 'Цели и библиотека работают. Дальше — установщик.' }, null]]
+  },
+  {
+    title: { en: 'Run a half marathon', ru: 'Пробежать полумарафон' },
+    body: { en: '21.1 km in under 2 hours.', ru: '21,1 км быстрее двух часов.' },
+    emoji: '🏃', color: '#bf3989', progress: 25, targetIn: 60,
+    notes: [
+      [38, { en: 'First 5 km run, 6:30 pace.', ru: 'Первая пробежка на 5 км, темп 6:30.' }, 10],
+      [12, { en: '12 km without stopping!', ru: 'Пробежал 12 км без остановок!' }, 25]
+    ]
+  },
+  {
+    title: { en: 'Read 12 books this year', ru: 'Прочитать 12 книг за год' },
+    body: { en: 'One book a month.', ru: 'По книге в месяц.' },
+    emoji: '📚', color: '#bf8700', progress: 100, achieved: 3,
+    notes: [[3, { en: 'Book number twelve is done 📚', ru: 'Двенадцатая книга прочитана 📚' }, 100]]
+  }
+]
+const GOAL_ENGLISH = 0
+const GOAL_TIMEHUB = 1
+const GOAL_RUN = 2
+
 interface TaskSpec {
-  title: Record<Lang, string>
-  body?: Record<Lang, string>
+  title: Text
+  body?: Text
   /** indexes into DEFAULT_LABELS */
   labels?: number[]
   project?: number
   created: number
   closed?: number
   planned?: number
+  time?: string
   due?: number
   estimate?: number
   priority?: Priority
@@ -128,7 +208,7 @@ const TASKS: TaskSpec[] = [
   {
     title: { en: 'Weekly planner with drag & drop', ru: 'Недельный планировщик с drag & drop' },
     body: { en: 'Columns for each day, drag tasks between them.', ru: 'Колонки по дням недели, задачи перетаскиваются между днями.' },
-    labels: [0], project: 0, created: 8, planned: 0, estimate: 180, priority: 2, work: [[2, 15, 50], [1, 10, 75]], running: true
+    labels: [0], project: 0, created: 8, planned: 0, time: '11:00', estimate: 180, priority: 2, work: [[2, 15, 50], [1, 10, 75]], running: true
   },
   { title: { en: 'Dark dimmed theme', ru: 'Тёмная тема dark dimmed' }, labels: [0], project: 0, created: 5, closed: 1, estimate: 45, work: [[1, 16, 35]] },
   { title: { en: 'Write a README with a GIF', ru: 'Написать README с гифкой' }, labels: [0], project: 0, created: 3, planned: 1, estimate: 60 },
@@ -143,7 +223,8 @@ const TASKS: TaskSpec[] = [
       en: '- [x] Limits\n- [x] Derivatives\n- [ ] Integrals\n- [ ] Series\n\n> Exam is on Tuesday, room 404',
       ru: '- [x] Пределы\n- [x] Производные\n- [ ] Интегралы\n- [ ] Ряды\n\n> Экзамен во вторник, ауд. 404'
     },
-    labels: [2, 4], project: 1, created: 14, planned: 0, due: 2, estimate: 300, priority: 3, work: [[4, 18, 90], [2, 19, 60], [0, 9, 45]]
+    labels: [2, 4], project: 1, created: 14, planned: 0, time: '15:00', due: 2, estimate: 300, priority: 3,
+    work: [[4, 18, 90], [2, 19, 60], [0, 9, 45]]
   },
   {
     title: { en: 'Thesis: chapter 2', ru: 'Курсовая: глава 2' },
@@ -156,12 +237,21 @@ const TASKS: TaskSpec[] = [
   { title: { en: 'Declutter the wardrobe', ru: 'Разобрать шкаф' }, labels: [1], project: 2, created: 30 },
   { title: { en: 'Plan the weekend trip', ru: 'Спланировать поездку на выходные' }, labels: [1], created: 1, planned: 4 }
 ]
+const PLANNER_TASK = 3
+const SUBTASKS: [Text, number | null][] = [
+  [{ en: 'Columns for each day', ru: 'Колонки по дням' }, 2],
+  [{ en: 'Drag tasks between days', ru: 'Перетаскивание между днями' }, 1],
+  [{ en: 'Dashed cards for recurring tasks', ru: 'Пунктирные карточки для повторов' }, null]
+]
 
 interface RecurrenceSpec {
-  title: Record<Lang, string>
+  title: Text
   rule: RecurrenceRule
   daysMask?: number
   dayOfMonth?: number
+  time?: string
+  completeOnTarget?: boolean
+  goal?: number
   labels: number[]
   estimate?: number
   startAgo: number
@@ -170,11 +260,53 @@ interface RecurrenceSpec {
   trackMin?: number
 }
 
+/** Bit n = weekday n, Monday first. */
+const days = (...list: number[]): number => list.reduce((m, d) => m | (1 << d), 0)
+
 const RECURRENCES: RecurrenceSpec[] = [
   { title: { en: 'Morning workout, 15 min', ru: 'Зарядка 15 минут' }, rule: 'daily', labels: [3], estimate: 15, startAgo: 45, doneRate: 0.85, doneHour: 8 },
-  { title: { en: 'English practice, 30 min', ru: 'Английский 30 минут' }, rule: 'weekdays', labels: [2], estimate: 30, startAgo: 35, doneRate: 0.8, doneHour: 19, trackMin: 30 },
-  { title: { en: 'Inbox zero: mail and messages', ru: 'Разобрать почту и сообщения' }, rule: 'weekly', daysMask: 0b0001001, labels: [0], estimate: 20, startAgo: 40, doneRate: 0.9, doneHour: 10 },
+  {
+    title: { en: 'English study', ru: 'Изучение английского' }, rule: 'weekly', daysMask: days(1, 4), time: '19:00', completeOnTarget: true,
+    goal: GOAL_ENGLISH, labels: [2], estimate: 120, startAgo: 70, doneRate: 0.85, doneHour: 21, trackMin: 120
+  },
+  { title: { en: 'Inbox zero: mail and messages', ru: 'Разобрать почту и сообщения' }, rule: 'weekly', daysMask: days(0, 3), labels: [0], estimate: 20, startAgo: 40, doneRate: 0.9, doneHour: 10 },
   { title: { en: 'Pay the internet bill', ru: 'Оплатить интернет' }, rule: 'monthly', dayOfMonth: 10, labels: [1], startAgo: 100, doneRate: 1, doneHour: 12 }
+]
+
+type AnimeRow = [en: string, ru: string, original: string, status: LibraryImport['status'], progress: number, total: number | null, extra?: Partial<LibraryImport>]
+const ANIME: AnimeRow[] = [
+  ['Frieren: Beyond Journey’s End', 'Провожающая в последний путь Фрирен', 'Sousou no Frieren', 'active', 18, 28, { rating: 10, year: 2023 }],
+  ['Spy x Family', 'Семья шпиона', 'Spy x Family', 'active', 30, 37, { year: 2022 }],
+  ['Dandadan', 'Дандадан', 'Dandadan', 'active', 16, 24, { latest: 18, year: 2024 }],
+  ['Solo Leveling', 'Поднятие уровня в одиночку', 'Ore dake Level Up na Ken', 'active', 20, 25, { year: 2024 }],
+  ['Jujutsu Kaisen', 'Магическая битва', 'Jujutsu Kaisen', 'active', 41, 47, { rating: 8, year: 2020 }],
+  ['The Apothecary Diaries', 'Монолог фармацевта', 'Kusuriya no Hitorigoto', 'active', 30, 48, { year: 2023 }],
+  ['Oshi no Ko', 'Звёздное дитя', 'Oshi no Ko', 'planned', 0, 24, { year: 2023 }],
+  ['Blue Lock', 'Синяя тюрьма: Блю Лок', 'Blue Lock', 'planned', 0, 38, { year: 2022 }],
+  ['Mushishi', 'Мастер Муси', 'Mushishi', 'planned', 0, 26, { year: 2005 }],
+  ['Chainsaw Man', 'Человек-бензопила', 'Chainsaw Man', 'completed', 12, 12, { rating: 9, favorite: true, year: 2022 }],
+  ['Vinland Saga', 'Сага о Винланде', 'Vinland Saga', 'completed', 48, 48, { rating: 9, year: 2019 }],
+  ['Cyberpunk: Edgerunners', 'Киберпанк: Бегущие по краю', 'Cyberpunk: Edgerunners', 'completed', 10, 10, { rating: 10, favorite: true, year: 2022 }],
+  ['Mob Psycho 100', 'Моб Психо 100', 'Mob Psycho 100', 'completed', 37, 37, { rating: 8, year: 2016 }],
+  ['Attack on Titan', 'Атака титанов', 'Shingeki no Kyojin', 'completed', 94, 94, { rating: 10, favorite: true, year: 2013 }],
+  ['Death Note', 'Тетрадь смерти', 'Death Note', 'completed', 37, 37, { rating: 9, favorite: true, year: 2006 }],
+  ['Steins;Gate', 'Врата Штейна', 'Steins;Gate', 'completed', 24, 24, { rating: 10, favorite: true, year: 2011 }],
+  ['Violet Evergarden', 'Вайолет Эвергарден', 'Violet Evergarden', 'completed', 13, 13, { rating: 9, year: 2018 }],
+  ['Made in Abyss', 'Созданный в Бездне', 'Made in Abyss', 'completed', 25, 25, { rating: 8, year: 2017 }],
+  ['Your Lie in April', 'Твоя апрельская ложь', 'Shigatsu wa Kimi no Uso', 'completed', 22, 22, { rating: 9, year: 2014 }],
+  ['Kaiju No. 8', 'Кайдзю номер восемь', 'Kaijuu 8-gou', 'on_hold', 5, 23, { year: 2024 }]
+]
+
+type ItemRow = [en: string, ru: string, input: Omit<LibraryInput, 'title'>]
+const LIBRARY: ItemRow[] = [
+  ['Dune', 'Дюна', { kind: 'book', status: 'active', progress: 320, total: 704, year: 1965, originalTitle: 'Dune' }],
+  ['Clean Architecture', 'Чистая архитектура', { kind: 'book', status: 'active', progress: 140, total: 352, year: 2017, originalTitle: 'Clean Architecture' }],
+  ['1984', '1984', { kind: 'book', status: 'completed', progress: 328, total: 328, rating: 9, year: 1949 }],
+  ['Interstellar', 'Интерстеллар', { kind: 'movie', status: 'completed', progress: 1, total: 1, rating: 10, favorite: true, year: 2014, originalTitle: 'Interstellar' }],
+  ['Dune: Part Two', 'Дюна: Часть вторая', { kind: 'movie', status: 'planned', total: 1, year: 2024, originalTitle: 'Dune: Part Two' }],
+  ['Arcane', 'Аркейн', { kind: 'series', status: 'completed', progress: 18, total: 18, rating: 10, year: 2021, originalTitle: 'Arcane' }],
+  ['The Last of Us', 'Одни из нас', { kind: 'series', status: 'active', progress: 4, total: 16, year: 2023, originalTitle: 'The Last of Us' }],
+  ['Hollow Knight', 'Hollow Knight', { kind: 'game', status: 'completed', rating: 9, year: 2017 }]
 ]
 
 function mulberry32(seed: number): () => number {
@@ -195,11 +327,30 @@ function iconDataUrl(color: string, glyph: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
+const escapeXml = (s: string): string => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)
+
+/** Generated square "album art" for the pretend music player. */
+export function artDataUrl(title: string, hue: number): string {
+  const letters = escapeXml(
+    title
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0] ?? '')
+      .join('')
+      .toUpperCase()
+  )
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="hsl(${hue},70%,55%)"/><stop offset="1" stop-color="hsl(${(hue + 60) % 360},65%,28%)"/></linearGradient></defs>` +
+    `<rect width="64" height="64" fill="url(#g)"/><text x="32" y="41" font-family="Segoe UI,Arial,sans-serif" font-size="22" font-weight="700" text-anchor="middle" fill="#fff">${letters}</text></svg>`
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
 /**
  * Fills a fresh demo database with four months of plausible history. `setNow`
  * moves the service clock so created/closed times and timers land in the past.
  */
-export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null) => void): void {
+export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null) => void): { gameAppId: ID } {
   const rand = mulberry32(20260913)
   const now = Date.now()
   const today = todayKey(now)
@@ -220,6 +371,9 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     service.setAppIcon(app.id, iconDataUrl(a.color, a.glyph))
     appIds[key] = app.id
   }
+  service.setAppLink({
+    appId: appIds.game, provider: 'steam', externalId: DEMO_GAME.steamId, name: DEMO_GAME.name, imageUrl: DEMO_GAME.header, storeUrl: DEMO_GAME.store
+  })
 
   // Activity history
   const titles = TITLES[lang]
@@ -251,11 +405,38 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     }
   }
 
+  // Music history (Windows media sessions)
+  for (let d = 29; d >= 0; d--) {
+    for (const [hour, chance] of [[14, 0.5], [20.5, 0.8]] as const) {
+      if (rand() > chance) continue
+      let t = at(d, hour) + Math.round(rand() * 40 * MINUTE)
+      const count = 5 + Math.floor(rand() * 10)
+      for (let i = 0; i < count; i++) {
+        const tr = DEMO_TRACKS[Math.floor(rand() * DEMO_TRACKS.length)]
+        const end = t + tr.sec * 1000
+        if (end > now) break
+        service.seedMedia(rand() < 0.85 ? 'Spotify.exe' : 'chrome.exe', tr.title, tr.artist, tr.album, t, end)
+        t = end + (rand() < 0.2 ? Math.round(rand() * 5 * MINUTE) : 0)
+      }
+    }
+  }
+
+  // Goals
+  setNow(at(90, 9))
+  const goalIds = GOALS.map(
+    (g) =>
+      service.saveGoal({
+        title: g.title[lang], body: g.body[lang], emoji: g.emoji, color: g.color, autoProgress: g.auto ?? false,
+        manualProgress: 0, targetDate: g.targetIn != null ? addDays(today, g.targetIn) : null
+      }).id
+  )
+
   // Projects and tasks
   setNow(at(40, 9))
   const projectIds = PROJECTS.map((p) => service.saveProject({ name: p.name[lang], color: p.color, description: p.description[lang] }).id)
   const specs = [...TASKS].sort((a, b) => b.created - a.created)
   let runningTask: ID | null = null
+  const taskIds = new Map<TaskSpec, ID>()
   for (const spec of specs) {
     setNow(at(spec.created, 10) + Math.round(rand() * 6 * HOUR))
     const task = service.createTask({
@@ -263,11 +444,14 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
       body: spec.body?.[lang] ?? '',
       labelIds: labelIds(spec.labels),
       projectId: spec.project != null ? projectIds[spec.project] : null,
+      goalId: spec.project === 0 ? goalIds[GOAL_TIMEHUB] : null,
       plannedDate: spec.planned != null ? addDays(today, spec.planned) : null,
+      plannedTime: spec.time ?? null,
       dueDate: spec.due != null ? addDays(today, spec.due) : null,
       estimateMin: spec.estimate ?? null,
       priority: spec.priority ?? 0
     })
+    taskIds.set(spec, task.id)
     for (const [daysAgo, hour, minutes] of spec.work ?? []) {
       const start = at(daysAgo, hour)
       if (start + minutes * MINUTE > now) continue
@@ -283,6 +467,17 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     if (spec.running) runningTask = task.id
   }
 
+  // Subtasks of the planner task
+  const plannerId = taskIds.get(TASKS[PLANNER_TASK])!
+  for (const [title, closedAgo] of SUBTASKS) {
+    setNow(at(8, 11) + Math.round(rand() * HOUR))
+    const sub = service.createTask({ title: title[lang], parentId: plannerId })
+    if (closedAgo != null) {
+      setNow(Math.min(now, at(closedAgo, 17)))
+      service.updateTask(sub.id, { status: 'closed' })
+    }
+  }
+
   // Recurring tasks with history
   const maxStart = Math.max(...RECURRENCES.map((r) => r.startAgo))
   const recIds = new Map<ID, RecurrenceSpec>()
@@ -293,6 +488,8 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
       if (spec.startAgo === d) {
         const rec = service.saveRecurrence({
           title: spec.title[lang], rule: spec.rule, daysMask: spec.daysMask, dayOfMonth: spec.dayOfMonth ?? null,
+          timeOfDay: spec.time ?? null, completeOnTarget: spec.completeOnTarget ?? false,
+          goalId: spec.goal != null ? goalIds[spec.goal] : null,
           labelIds: labelIds(spec.labels), estimateMin: spec.estimate ?? null, startDate: key
         })
         recIds.set(rec.id, spec)
@@ -317,12 +514,82 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     }
   }
 
+  // Time on the running goal itself: morning runs
+  for (let d = 40; d >= 1; d--) {
+    if (![0, 2, 5].includes(weekday(addDays(today, -d)))) continue
+    setNow(at(d, 7) + Math.round(rand() * 20 * MINUTE))
+    service.startGoalTimer(goalIds[GOAL_RUN])
+    setNow(at(d, 7.6) + Math.round(rand() * 25 * MINUTE))
+    service.stopTimer()
+  }
+
+  // Goal journals, manual progress and achievements
+  GOALS.forEach((g, i) => {
+    for (const [ago, body, progress] of g.notes) {
+      setNow(at(ago, 21) + Math.round(rand() * HOUR))
+      service.addGoalNote(goalIds[i], body[lang], progress)
+    }
+    if (!g.auto && g.progress != null) service.saveGoal({ id: goalIds[i], title: g.title[lang], manualProgress: g.progress })
+    if (g.achieved != null) {
+      setNow(at(g.achieved, 21.5))
+      service.saveGoal({ id: goalIds[i], title: g.title[lang], status: 'achieved' })
+    }
+  })
+
+  // Library: lists "imported" from AniLib/MangaLib and Steam, the rest by hand
+  setNow(at(1, 20))
+  service.importLibrary(
+    'anilib',
+    ANIME.map(([en, ru, original, status, progress, total, extra], i) => ({
+      kind: 'anime', externalId: `demo-${i}`, title: lang === 'ru' ? ru : en, originalTitle: original, status, progress, total, format: 'TV', ...extra
+    }))
+  )
+  service.importLibrary('mangalib', [
+    { kind: 'manga', externalId: 'demo-berserk', title: lang === 'ru' ? 'Берсерк' : 'Berserk', originalTitle: 'Berserk', status: 'active', progress: 180, year: 1989, format: 'Manga' },
+    { kind: 'manga', externalId: 'demo-vagabond', title: lang === 'ru' ? 'Бродяга' : 'Vagabond', originalTitle: 'Vagabond', status: 'planned', progress: 0, year: 1998, format: 'Manga' }
+  ])
+  service.importLibrary('steam', [
+    { kind: 'game', externalId: DEMO_GAME.steamId, title: DEMO_GAME.name, coverUrl: DEMO_GAME.cover, status: 'active', year: 2025, format: 'Steam', url: DEMO_GAME.store, appId: appIds.game }
+  ])
+  LIBRARY.forEach(([en, ru, input], i) => {
+    setNow(at(3 + i * 4, 20))
+    service.saveLibraryItem({ ...input, title: lang === 'ru' ? ru : en })
+  })
+
+  // A work calendar around this week
+  const ru = lang === 'ru'
+  const events: Omit<CalendarEvent, 'id' | 'source'>[] = []
+  const event = (key: string, uid: string, title: string, fromH: number, toH: number, color: string, location = ''): void => {
+    const day = startOfDayMs(key)
+    events.push({ uid: `${uid}-${key}`, title, location, start: day + fromH * HOUR, end: day + toH * HOUR, allDay: false, color })
+  }
+  for (let d = -7; d <= 14; d++) {
+    const key = addDays(today, d)
+    const wd = weekday(key)
+    if (wd < 5) event(key, 'standup', ru ? 'Планёрка' : 'Daily standup', 10, 10.25, '#0969da', 'Google Meet')
+    if (wd === 1 || wd === 3) event(key, 'lecture', ru ? 'Лекция: матанализ' : 'Lecture: calculus', 12, 13.5, '#8250df', ru ? 'ауд. 404' : 'Room 404')
+    if (wd === 4) event(key, 'sync', ru ? 'Созвон с командой' : 'Team sync', 16, 17, '#0969da')
+    if (wd === 6) event(key, 'parents', ru ? 'Созвон с родителями' : 'Call with parents', 18, 19, '#bf3989')
+  }
+  const birthday = startOfDayMs(addDays(today, 5))
+  events.push({ uid: 'birthday', title: ru ? 'День рождения мамы 🎂' : 'Mom’s birthday 🎂', location: '', start: birthday, end: birthday + DAY, allDay: true, color: '#bf3989' })
+  service.replaceCalendarEvents(DEMO_CALENDAR, startOfDayMs(addDays(today, -7)), startOfDayMs(addDays(today, 15)), events)
+
+  // GitHub contributions for the overview heatmap
+  const github: DayValue[] = []
+  for (let d = 0; d < 365; d++) {
+    const key = addDays(today, -d)
+    const weekend = weekday(key) >= 5
+    const active = rand() < (weekend ? 0.35 : 0.8)
+    github.push({ date: key, value: active ? 1 + Math.floor(rand() * (weekend ? 4 : 9)) : 0 })
+  }
+  service.setExternalDays('github', github)
+
   // Rules
   setNow(at(30, 9))
   const media = service.listCategories().find((c) => c.key === 'media')
   if (media) service.saveRule({ appId: appIds.chrome, titlePattern: '/youtube|twitch/', taskId: null, categoryId: media.id })
-  const planner = service.listTasks().find((t) => t.title === TASKS[3].title[lang])
-  if (planner) service.saveRule({ appId: appIds.code, titlePattern: 'timehub', taskId: planner.id, categoryId: null })
+  service.saveRule({ appId: appIds.code, titlePattern: 'timehub', taskId: plannerId, categoryId: null })
   service.reapplyRules(0)
 
   if (runningTask != null) {
@@ -330,4 +597,5 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     service.startTimer(runningTask)
   }
   setNow(null)
+  return { gameAppId: appIds.game }
 }

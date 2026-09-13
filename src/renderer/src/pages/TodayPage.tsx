@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { Button, CounterLabel, TextInput } from '@primer/react'
-import { AlertIcon, CheckCircleIcon, PlusIcon, SunIcon } from '@primer/octicons-react'
+import { AlertIcon, CalendarIcon, CheckCircleIcon, PlusIcon, SunIcon, UnmuteIcon } from '@primer/octicons-react'
 import { Link } from 'react-router'
 import type { Task } from '@shared/types'
-import { MINUTE, endOfDayMs, startOfDayMs, todayKey } from '@shared/time'
+import { MINUTE, endOfDayMs, formatHM, startOfDayMs, todayKey } from '@shared/time'
 import { api } from '../api'
 import { useApp } from '../context'
 import { useAction, useNow, useQuery } from '../hooks'
@@ -12,12 +12,15 @@ import { AppIcon, AppUsageList, Blankslate, CategoryBar, ErrorFlash, Progress } 
 import { TaskRow } from '../components/TaskRow'
 
 const bySortOrder = (a: Task, b: Task): number => a.sortOrder - b.sortOrder || a.number - b.number
+/** Timed tasks first, in time order; the rest keep your manual order. */
+const byTime = (a: Task, b: Task): number => (a.plannedTime ?? '99:99').localeCompare(b.plannedTime ?? '99:99') || bySortOrder(a, b)
 
 export function TodayPage(): ReactNode {
   const { t, date, duration } = useI18n()
   const today = todayKey()
   const tasks = useQuery(() => api.listTasks(), [], ['tasks'])
   const usage = useQuery(() => api.getUsage(startOfDayMs(today), endOfDayMs(today)), [today], ['activity', 'time', 'tasks'])
+  const events = useQuery(() => api.listCalendarEvents(startOfDayMs(today), endOfDayMs(today)), [today], ['calendar'])
   const [title, setTitle] = useState('')
   const add = useAction(async () => {
     const value = title.trim()
@@ -31,7 +34,7 @@ export function TodayPage(): ReactNode {
   const all = tasks.data ?? []
   const isToday = (x: Task): boolean => x.plannedDate === today || (x.plannedDate == null && x.dueDate === today)
   const open = all.filter((x) => x.status === 'open')
-  const planned = open.filter(isToday).sort(bySortOrder)
+  const planned = open.filter(isToday).sort(byTime)
   const overdue = open
     .filter((x) => !isToday(x) && ((x.plannedDate != null && x.plannedDate < today) || (x.dueDate != null && x.dueDate < today)))
     .sort(bySortOrder)
@@ -39,6 +42,7 @@ export function TodayPage(): ReactNode {
   const done = all.filter((x) => x.status === 'closed' && (x.closedAt ?? 0) >= dayStart).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))
   const total = planned.length + done.length
   const estimate = planned.reduce((s, x) => s + (x.estimateMin ?? 0), 0)
+  const dayEvents = events.data ?? []
 
   const drop = (targetId: number): void => {
     if (dragId == null || dragId === targetId) return
@@ -83,6 +87,25 @@ export function TodayPage(): ReactNode {
             />
           </form>
           <ErrorFlash error={add.error} />
+
+          {dayEvents.length > 0 && (
+            <div className="box">
+              <div className="box-header">
+                <CalendarIcon />
+                <h2 className="box-title grow">
+                  {t('today.events')} <CounterLabel>{dayEvents.length}</CounterLabel>
+                </h2>
+              </div>
+              {dayEvents.map((e) => (
+                <div key={e.id} className="box-row event-row">
+                  <span className="color-dot" style={{ background: e.color }} />
+                  <span className="mono small nowrap event-time">{e.allDay ? t('today.allDay') : `${formatHM(e.start)}–${formatHM(e.end)}`}</span>
+                  <span className="grow truncate">{e.title}</span>
+                  {e.location && <span className="small muted truncate">{e.location}</span>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {overdue.length > 0 && (
             <div className="box">
@@ -180,9 +203,11 @@ export function TodayPage(): ReactNode {
 
 function NowCard(): ReactNode {
   const { tracker, timer, settings, categoryById, appById } = useApp()
-  const { t, duration } = useI18n()
+  const { t, tn, duration } = useI18n()
   const now = useNow(5000)
   const current = tracker.current
+  const game = tracker.games[0]
+  const media = tracker.media?.playing ? tracker.media : null
   const color = current ? categoryById.get(appById.get(current.appId)?.categoryId ?? -1)?.color : undefined
 
   let status: ReactNode
@@ -224,11 +249,28 @@ function NowCard(): ReactNode {
       </div>
       <div className="box-body stack stack-sm">
         {status}
+        {game && !settings.trackingPaused && (
+          <Link to={`/activity/apps/${game.appId}`} className="row small link-plain">
+            <AppIcon icon={game.icon} name={game.displayName} size={16} />
+            <span className="grow truncate">{t('tracker.playing', { name: game.details ?? game.displayName })}</span>
+            {game.playersOnline != null && <span className="muted nowrap">{tn('presence.players', game.playersOnline)}</span>}
+          </Link>
+        )}
+        {media && (
+          <div className="row small">
+            <UnmuteIcon size={14} />
+            <span className="grow truncate">
+              {media.title}
+              {media.artist ? ` — ${media.artist}` : ''}
+            </span>
+            <span className="muted nowrap">{media.sourceName}</span>
+          </div>
+        )}
         {timer ? (
           <div className="row small">
             <span className="live-dot rec" />
-            <Link to={`/tasks/${timer.taskNumber}`} className="truncate grow">
-              #{timer.taskNumber} {timer.taskTitle}
+            <Link to={timer.taskNumber != null ? `/tasks/${timer.taskNumber}` : `/goals/${timer.goalId}`} className="truncate grow">
+              {timer.taskNumber != null ? `#${timer.taskNumber}` : '🎯'} {timer.title}
             </Link>
             <span className="nowrap">{duration(now - timer.start)}</span>
           </div>

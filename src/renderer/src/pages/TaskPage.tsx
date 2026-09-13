@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { ActionList, ActionMenu, Button, IconButton, StateLabel, TextInput, Timeline, useConfirm } from '@primer/react'
 import {
-  IssueClosedIcon, IssueOpenedIcon, IssueReopenedIcon, KebabHorizontalIcon, PencilIcon, PlusIcon, StopwatchIcon, SyncIcon, TrashIcon, ZapIcon
+  IssueClosedIcon, IssueOpenedIcon, IssueReopenedIcon, IssueTracksIcon, KebabHorizontalIcon, PencilIcon, PlusIcon, StopwatchIcon,
+  SyncIcon, TrashIcon, ZapIcon
 } from '@primer/octicons-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import type { Task, TaskPatch, TimeEntry } from '@shared/types'
@@ -10,9 +11,10 @@ import { api } from '../api'
 import { useApp } from '../context'
 import { useAction, useNow, useQuery } from '../hooks'
 import { useI18n, type MessageKey } from '../i18n'
-import { combineDateTime, dayLabel, ruleText, timeInputValue } from '../utils'
-import { Blankslate, ErrorFlash, Markdown, Progress, TaskLabels } from '../components/common'
-import { LabelSelect, MarkdownEditor, PrioritySelect, ProjectSelect } from '../components/TaskForm'
+import { combineDateTime, dayLabel, ruleText, taskProgress, timeInputValue } from '../utils'
+import { Blankslate, ErrorFlash, Markdown, MiniProgress, Progress, ProgressSlider, StreakBadge, TaskLabels } from '../components/common'
+import { GoalSelect, LabelSelect, MarkdownEditor, PrioritySelect, ProjectSelect } from '../components/TaskForm'
+import { SubtaskList } from '../components/SubtaskList'
 import { TimerButton } from '../components/TimerButton'
 
 export function TaskPage(): ReactNode {
@@ -41,6 +43,8 @@ function TaskView({ task }: { task: Task }): ReactNode {
   const navigate = useNavigate()
   const confirm = useConfirm()
   const entries = useQuery(() => api.listTimeEntries({ taskId: task.id }), [task.id], ['time'])
+  const subtasks = useQuery(() => api.listTasks({ parentId: task.id }), [task.id], ['tasks'])
+  const parent = useQuery(async () => (task.parentId != null ? api.getTask(task.parentId) : null), [task.parentId], ['tasks'])
   const recurrence = useQuery(
     async () => (task.recurrenceId == null ? null : ((await api.listRecurrences()).find((r) => r.id === task.recurrenceId) ?? null)),
     [task.recurrenceId],
@@ -53,6 +57,7 @@ function TaskView({ task }: { task: Task }): ReactNode {
   const update = useAction((patch: TaskPatch) => api.updateTask(task.id, patch))
   const list = entries.data ?? []
   const estimateMs = (task.estimateMin ?? 0) * MINUTE
+  const progress = taskProgress(task)
 
   const remove = async (): Promise<void> => {
     const ok = await confirm({
@@ -69,6 +74,15 @@ function TaskView({ task }: { task: Task }): ReactNode {
   return (
     <div className="container">
       <div className="task-head">
+        {parent.data && (
+          <div className="small muted mb-2 row" style={{ gap: 4 }}>
+            <IssueTracksIcon size={12} />
+            {t('task.parent')}{' '}
+            <Link to={`/tasks/${parent.data.number}`}>
+              #{parent.data.number} {parent.data.title}
+            </Link>
+          </div>
+        )}
         {editingTitle ? (
           <form
             className="row"
@@ -90,7 +104,7 @@ function TaskView({ task }: { task: Task }): ReactNode {
         ) : (
           <div className="row" style={{ alignItems: 'flex-start' }}>
             <h1 className="task-title grow">
-              {task.title} <span className="muted">#{task.number}</span>
+              {task.title} <span className="muted">#{task.number}</span> <StreakBadge n={task.streak} title={t('task.streakTitle')} />
             </h1>
             <Button
               size="small"
@@ -163,6 +177,7 @@ function TaskView({ task }: { task: Task }): ReactNode {
             </div>
           </div>
 
+          <SubtaskList tasks={subtasks.data ?? []} onAdd={(value) => api.createTask({ title: value, parentId: task.id })} />
           <TimeLog entries={list} />
           <AddEntry taskId={task.id} />
 
@@ -185,10 +200,35 @@ function TaskView({ task }: { task: Task }): ReactNode {
           </div>
           <div className="sidebar-section">
             <div className="sidebar-heading">
+              {t('task.completion')}
+              {task.progress != null && (
+                <button type="button" className="link-button small" onClick={() => void update.run({ progress: null })}>
+                  {t('task.auto')}
+                </button>
+              )}
+            </div>
+            {task.progress == null && task.childCount > 0 ? (
+              <div className="stack stack-sm">
+                <div className="row small">
+                  <span className="grow muted">{t('task.autoProgress', { done: task.childDone, total: task.childCount })}</span>
+                  <span className="bold">{progress}%</span>
+                </div>
+                <MiniProgress value={(progress ?? 0) / 100} />
+              </div>
+            ) : (
+              <ProgressSlider value={progress ?? 0} disabled={task.status === 'closed'} onCommit={(v) => void update.run({ progress: v })} />
+            )}
+          </div>
+          <div className="sidebar-section">
+            <div className="sidebar-heading">
               {t('task.labels')}
               <LabelSelect value={task.labelIds} onChange={(ids) => void update.run({ labelIds: ids })} label={t('common.edit')} />
             </div>
             {task.labelIds.length ? <TaskLabels ids={task.labelIds} /> : <span className="small muted">{t('task.noLabels')}</span>}
+          </div>
+          <div className="sidebar-section">
+            <div className="sidebar-heading">{t('task.goal')}</div>
+            <GoalSelect block value={task.goalId} onChange={(id) => void update.run({ goalId: id })} />
           </div>
           <div className="sidebar-section">
             <div className="sidebar-heading">{t('task.project')}</div>
@@ -196,7 +236,15 @@ function TaskView({ task }: { task: Task }): ReactNode {
           </div>
           <div className="sidebar-section">
             <div className="sidebar-heading">{t('task.plannedDate')}</div>
-            <TextInput block type="date" value={task.plannedDate ?? ''} onChange={(e) => void update.run({ plannedDate: e.target.value || null })} />
+            <div className="row">
+              <TextInput block type="date" value={task.plannedDate ?? ''} onChange={(e) => void update.run({ plannedDate: e.target.value || null })} />
+              <TextInput
+                type="time"
+                value={task.plannedTime ?? ''}
+                aria-label={t('task.plannedTime')}
+                onChange={(e) => void update.run({ plannedTime: e.target.value || null })}
+              />
+            </div>
           </div>
           <div className="sidebar-section">
             <div className="sidebar-heading">{t('task.dueDate')}</div>
@@ -222,7 +270,9 @@ function TaskView({ task }: { task: Task }): ReactNode {
               <Link to="/plan" className="row small link-plain">
                 <SyncIcon size={14} />
                 {ruleText(recurrence.data, i18n)}
+                {recurrence.data.timeOfDay ? ` · ${recurrence.data.timeOfDay}` : ''}
               </Link>
+              {recurrence.data.completeOnTarget && <div className="small muted mt-2">{t('plan.autoComplete')}</div>}
             </div>
           )}
           <div className="sidebar-section">

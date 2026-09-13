@@ -1,5 +1,8 @@
 import type { Service } from './service'
-import type { AppMeta, ChangeTopic, TrackerStatus } from './types'
+import type {
+  AppMeta, ChangeTopic, ConnectionKey, ConnectionPatch, ConnectionStatus, GameInfo, ID, LibraryKind, LibrarySearchResult,
+  SpotifyOverview, TrackerStatus
+} from './types'
 
 export const IPC_INVOKE = 'timehub:invoke'
 export const IPC_CHANGED = 'timehub:changed'
@@ -10,12 +13,16 @@ export const SERVICE_METHODS = [
   'listProjects', 'saveProject', 'deleteProject',
   'listLabels', 'saveLabel', 'deleteLabel',
   'listTasks', 'getTask', 'getTaskByNumber', 'createTask', 'updateTask', 'deleteTask', 'reorderTasks',
-  'listTimeEntries', 'getRunningTimer', 'startTimer', 'stopTimer', 'addTimeEntry', 'updateTimeEntry', 'deleteTimeEntry',
+  'listTimeEntries', 'getRunningTimer', 'startTimer', 'startGoalTimer', 'stopTimer', 'addTimeEntry', 'updateTimeEntry',
+  'deleteTimeEntry',
   'listRecurrences', 'saveRecurrence', 'deleteRecurrence',
+  'listGoals', 'getGoal', 'saveGoal', 'deleteGoal', 'listGoalNotes', 'addGoalNote', 'deleteGoalNote', 'getGoalDays',
   'listCategories', 'saveCategory', 'deleteCategory',
-  'listApps', 'updateApp',
-  'listSessions', 'getUsage', 'getDailyActive', 'getHeatmap', 'getFeed',
-  'listRules', 'saveRule', 'deleteRule', 'reapplyRules'
+  'listApps', 'updateApp', 'getAppLink', 'getAppReport', 'getAppStreaks',
+  'listSessions', 'getUsage', 'getDailyActive', 'getMonthlyActive', 'getHeatmap', 'getFeed',
+  'listRules', 'saveRule', 'deleteRule', 'reapplyRules',
+  'getMusic', 'listCalendarEvents', 'getExternalDays',
+  'listLibrary', 'getLibraryItem', 'saveLibraryItem', 'bumpLibraryProgress', 'deleteLibraryItem'
 ] as const satisfies readonly (keyof Service)[]
 export type ServiceMethod = (typeof SERVICE_METHODS)[number]
 
@@ -28,9 +35,22 @@ export interface HostApi {
   openDataFolder(): void
   setTitleBarTheme(colors: { color: string; symbolColor: string }): void
   openExternal(url: string): void
+  listConnections(): ConnectionStatus[]
+  updateConnection(key: ConnectionKey, patch: ConnectionPatch): ConnectionStatus
+  syncConnection(key: ConnectionKey): ConnectionStatus
+  /** Runs the Spotify sign-in in the browser and waits for it to finish. */
+  connectSpotify(): ConnectionStatus
+  disconnectConnection(key: ConnectionKey): ConnectionStatus
+  /** Store/platform data for a game (players online, cover…), if known. */
+  getGameInfo(appId: ID): GameInfo | null
+  getSpotifyOverview(): SpotifyOverview | null
+  /** Finds titles to add to the library (AniLib, Open Library, Steam, TMDB…). */
+  searchLibrary(kind: LibraryKind, query: string): LibrarySearchResult[]
 }
 export const HOST_METHODS = [
-  'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal'
+  'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
+  'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
+  'getSpotifyOverview', 'searchLibrary'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

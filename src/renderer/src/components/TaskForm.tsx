@@ -116,7 +116,35 @@ export function PrioritySelect({ value, onChange, block }: { value: Priority; on
   )
 }
 
-export function TaskForm({ value, onChange, onSubmit }: { value: TaskInput; onChange(v: TaskInput): void; onSubmit?(): void }): ReactNode {
+export function GoalSelect({ value, onChange, block }: { value: ID | null; onChange(id: ID | null): void; block?: boolean }): ReactNode {
+  const { goals } = useApp()
+  const { t } = useI18n()
+  return (
+    <Select block={block} value={value == null ? '' : String(value)} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
+      <Select.Option value="">{t('goals.none')}</Select.Option>
+      {goals
+        .filter((g) => g.status === 'active' || g.id === value)
+        .map((g) => (
+          <Select.Option key={g.id} value={String(g.id)}>
+            {`${g.emoji} ${g.title}`}
+          </Select.Option>
+        ))}
+    </Select>
+  )
+}
+
+export function TaskForm({
+  value,
+  onChange,
+  onSubmit,
+  repeating
+}: {
+  value: TaskInput
+  onChange(v: TaskInput): void
+  onSubmit?(): void
+  /** Hides one-off dates when the task repeats */
+  repeating?: boolean
+}): ReactNode {
   const { t } = useI18n()
   const set = <K extends keyof TaskInput>(key: K, v: TaskInput[K]): void => onChange({ ...value, [key]: v })
   return (
@@ -147,13 +175,28 @@ export function TaskForm({ value, onChange, onSubmit }: { value: TaskInput; onCh
         <Field label={t('task.priority')}>
           <PrioritySelect block value={value.priority ?? 0} onChange={(v) => set('priority', v)} />
         </Field>
-        <Field label={t('task.plannedDate')}>
-          <TextInput block type="date" value={value.plannedDate ?? ''} onChange={(e) => set('plannedDate', e.target.value || null)} />
+        <Field label={t('task.goal')}>
+          <GoalSelect block value={value.goalId ?? null} onChange={(v) => set('goalId', v)} />
         </Field>
-        <Field label={t('task.dueDate')}>
-          <TextInput block type="date" value={value.dueDate ?? ''} onChange={(e) => set('dueDate', e.target.value || null)} />
-        </Field>
-        <Field label={t('task.estimate')}>
+        {!repeating && (
+          <Field label={t('task.plannedDate')}>
+            <div className="row">
+              <TextInput block type="date" value={value.plannedDate ?? ''} onChange={(e) => set('plannedDate', e.target.value || null)} />
+              <TextInput
+                type="time"
+                value={value.plannedTime ?? ''}
+                aria-label={t('task.plannedTime')}
+                onChange={(e) => set('plannedTime', e.target.value || null)}
+              />
+            </div>
+          </Field>
+        )}
+        {!repeating && (
+          <Field label={t('task.dueDate')}>
+            <TextInput block type="date" value={value.dueDate ?? ''} onChange={(e) => set('dueDate', e.target.value || null)} />
+          </Field>
+        )}
+        <Field label={repeating ? t('repeat.duration') : t('task.estimate')}>
           <TextInput
             block
             type="number"

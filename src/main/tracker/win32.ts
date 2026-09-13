@@ -97,16 +97,42 @@ export function getForegroundWindow(): ForegroundWindow | null {
 const pidsBuf = Buffer.alloc(4 * 8192)
 const neededBuf = Buffer.alloc(4)
 
-/** Full executable paths of all running processes we are allowed to query. */
-export function listProcessPaths(): string[] {
+/** Running processes we are allowed to query, with their executable paths. */
+export function listProcesses(): { pid: number; path: string }[] {
   if (!K32EnumProcesses(pidsBuf, pidsBuf.length, neededBuf)) return []
   const count = neededBuf.readUInt32LE(0) / 4
-  const out = new Set<string>()
+  const out: { pid: number; path: string }[] = []
   for (let i = 0; i < count; i++) {
-    const p = processPath(pidsBuf.readUInt32LE(i * 4))
-    if (p) out.add(p)
+    const pid = pidsBuf.readUInt32LE(i * 4)
+    const path = processPath(pid)
+    if (path) out.push({ pid, path })
   }
-  return [...out]
+  return out
+}
+
+/** Full executable paths of all running processes we are allowed to query. */
+export function listProcessPaths(): string[] {
+  return [...new Set(listProcesses().map((p) => p.path))]
+}
+
+const EnumWindows = user32.func('bool __stdcall EnumWindows(EnumChildProc *lpEnumFunc, intptr_t lParam)')
+const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(void *hWnd)')
+const GetWindowTextLengthW = user32.func('int __stdcall GetWindowTextLengthW(void *hWnd)')
+
+/**
+ * Processes that own a visible, titled top-level window. Used to tell a game
+ * that is actually open from one idling in the tray (e.g. Roblox).
+ */
+export function visibleWindowPids(): Set<number> {
+  const pids = new Set<number>()
+  EnumWindows(
+    (hwnd: unknown) => {
+      if (IsWindowVisible(hwnd) && GetWindowTextLengthW(hwnd) > 0) pids.add(windowPid(hwnd))
+      return true
+    },
+    0
+  )
+  return pids
 }
 
 const descriptions = new Map<string, string | null>()

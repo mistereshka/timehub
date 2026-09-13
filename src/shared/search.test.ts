@@ -4,7 +4,8 @@ import type { Label, Project, Task } from './types'
 
 const task = (over: Partial<Task>): Task => ({
   id: 1, number: 1, title: 'Task', body: '', status: 'open', priority: 0, projectId: null, labelIds: [],
-  dueDate: null, plannedDate: null, estimateMin: null, recurrenceId: null, sortOrder: 0,
+  dueDate: null, plannedDate: null, plannedTime: null, estimateMin: null, recurrenceId: null, parentId: null, goalId: null,
+  progress: null, childCount: 0, childDone: 0, streak: 0, sortOrder: 0,
   createdAt: 0, updatedAt: 0, closedAt: null, trackedMs: 0, ...over
 })
 
