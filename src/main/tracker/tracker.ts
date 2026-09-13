@@ -1,8 +1,9 @@
 import { app, powerMonitor } from 'electron'
 import { win32 as winPath } from 'node:path'
-import type { Service } from '@shared/service'
+import type { ActivitySample, Service } from '@shared/service'
 import type { GamePresence, ID, TrackerState, TrackerStatus } from '@shared/types'
 import { looksLikeGame } from '@shared/catalog'
+import { detectSite, isBrowserExe } from '@shared/sites'
 
 type Win32 = typeof import('./win32')
 
@@ -112,20 +113,38 @@ export class Tracker {
         this.stopActivity('locked')
         return
       }
+      const displayName = w.fileDescription(fg.exePath) ?? undefined
+      let sample: Pick<ActivitySample, 'exePath' | 'exeName' | 'title' | 'displayName' | 'categoryKey'> = {
+        exePath: fg.exePath,
+        exeName: fg.exeName,
+        title: fg.title,
+        displayName
+      }
+      // A tab on a known site (YouTube, Яндекс Музыка, GitHub…) counts as that site, not as "Chrome".
+      const site = isBrowserExe(fg.exeName) ? detectSite(fg.title) : null
+      if (site) {
+        const browser = this.service.ensureApp(fg.exePath, fg.exeName, displayName).app
+        if (!browser.ignored) {
+          sample = {
+            exePath: `site:${site.key}`,
+            exeName: site.domain,
+            // "don't record titles" on the browser also covers its sites
+            title: browser.recordTitles ? site.pageTitle : '',
+            displayName: site.name,
+            categoryKey: site.category
+          }
+        }
+      }
       const result = this.service.recordSample(
-        {
-          at: Date.now(),
-          exePath: fg.exePath,
-          exeName: fg.exeName,
-          title: fg.title,
-          idleMs: powerMonitor.getSystemIdleTime() * 1000,
-          displayName: w.fileDescription(fg.exePath) ?? undefined
-        },
+        { at: Date.now(), ...sample, idleMs: powerMonitor.getSystemIdleTime() * 1000 },
         { intervalMs: settings.pollIntervalSec * 1000, idleThresholdMs: settings.idleThresholdMin * 60_000 }
       )
       if (result.state === 'active') {
         const a = result.app
-        if (!a.icon && fg.exePath) this.loadIcon(a.id, fg.exePath)
+        if (!a.icon) {
+          if (a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
+          else if (fg.exePath) this.loadIcon(a.id, fg.exePath)
+        }
         this.setStatus({
           state: 'active',
           current: { appId: a.id, displayName: a.displayName, icon: a.icon, title: result.title, since: result.since }
@@ -190,6 +209,31 @@ export class Tracker {
     for (const key of [...this.gamesSince.keys()]) if (!seen.has(key)) this.gamesSince.delete(key)
     this.running = running
     this.setStatus({ games })
+  }
+
+  /** Favicons for sites split out of the browser history. */
+  ensureSiteIcons(): void {
+    for (const a of this.service.listApps()) if (!a.icon && a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
+  }
+
+  private loadSiteIcon(appId: ID, domain: string): void {
+    if (this.iconRequested.has(appId)) return
+    this.iconRequested.add(appId)
+    void (async () => {
+      for (const url of [`https://${domain}/favicon.ico`, `https://icons.duckduckgo.com/ip3/${domain}.ico`]) {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+          const type = (res.headers.get('content-type') ?? '').split(';')[0].trim()
+          if (!res.ok || !type.startsWith('image/')) continue
+          const buf = Buffer.from(await res.arrayBuffer())
+          if (buf.length < 64 || buf.length > 300_000) continue
+          this.service.setAppIcon(appId, `data:${type};base64,${buf.toString('base64')}`)
+          return
+        } catch {
+          // try the next source
+        }
+      }
+    })()
   }
 
   private loadIcon(appId: ID, exePath: string): void {

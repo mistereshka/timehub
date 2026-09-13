@@ -37,6 +37,7 @@ const DEFS: Def[] = [
   },
   { key: 'roblox', icon: '🧱', group: 'games', fields: [{ name: 'username', label: 'conn.field.robloxUser' }] },
   { key: 'epic', icon: '🛡️', group: 'games', fields: [] },
+  { key: 'battlenet', icon: '❄️', group: 'games', fields: [] },
   { key: 'media', icon: '🎵', group: 'media', fields: [] },
   {
     key: 'spotify', icon: '🟢', group: 'media', fields: [{ name: 'clientId', label: 'conn.field.spotifyClient' }],
@@ -52,6 +53,10 @@ const DEFS: Def[] = [
   },
   { key: 'anilib', icon: '📺', group: 'library', fields: [{ name: 'profile', label: 'conn.field.anilibProfile', placeholder: 'https://anilib.me/ru/user/…' }] },
   { key: 'shikimori', icon: '🦊', group: 'library', fields: [{ name: 'nickname', label: 'conn.field.shikiNick' }] },
+  {
+    key: 'newdeaf', icon: '🍿', group: 'library',
+    fields: [{ name: 'site', label: 'conn.field.siteUrl', placeholder: 'https://13sep.newdeaf.co' }]
+  },
   {
     key: 'tmdb', icon: '🎬', group: 'library', fields: [{ name: 'apiKey', label: 'conn.field.tmdbKey', secret: true }],
     help: { url: 'https://www.themoviedb.org/settings/api', label: 'conn.help.tmdb' }

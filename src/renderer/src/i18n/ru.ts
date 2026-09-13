@@ -665,5 +665,11 @@ export const ru: Record<MessageKey, string> = {
   'settings.remindMin': 'За {n} мин',
   'settings.remindTest': 'Проверить уведомление',
   'settings.remindTestSent': 'Отправлено — посмотрите в угол экрана.',
-  'settings.remindUnsupported': 'Уведомления работают только в приложении для Windows.'
+  'settings.remindUnsupported': 'Уведомления работают только в приложении для Windows.',
+
+  'conn.battlenet.name': 'Battle.net',
+  'conn.battlenet.desc': 'Находит установленные игры Blizzard (Hearthstone, Overwatch, WoW, Diablo…), привязывает их к трекеру и добавляет в библиотеку.',
+  'conn.newdeaf.name': 'NewDeaf — фильмы и сериалы',
+  'conn.newdeaf.desc': 'Посмотрите фильм или серию на NewDeaf дольше 10 минут — он появится в библиотеке с постером. Поиск фильмов и сериалов тоже идёт по этому сайту.',
+  'conn.field.siteUrl': 'Адрес сайта (зеркало)'
 }

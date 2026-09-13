@@ -2,6 +2,7 @@ import type { LibraryKind, LibrarySearchResult } from '@shared/types'
 import { searchLib } from './anilib'
 import type { Connector, Env } from './connections'
 import { getJson } from './http'
+import { searchNewDeaf } from './newdeaf'
 import { searchShikimori } from './shikimori'
 import { steamHeader, steamStore } from './steam'
 
@@ -127,7 +128,7 @@ export class TmdbConnector implements Connector {
 export async function searchLibrary(
   kind: LibraryKind,
   query: string,
-  opts: { tmdbKey: string | null; language: string }
+  opts: { tmdbKey: string | null; newdeafBase: string | null; language: string }
 ): Promise<LibrarySearchResult[]> {
   const q = query.trim()
   if (q.length < 2) return []
@@ -146,8 +147,19 @@ export async function searchLibrary(
     case 'game':
       return steamStoreSearch(q)
     case 'movie':
-    case 'series':
+    case 'series': {
+      // Posters and pages from NewDeaf first; TMDB (needs a key) as a fallback.
+      if (opts.newdeafBase) {
+        try {
+          const found = await searchNewDeaf(opts.newdeafBase, q)
+          const ofKind = found.filter((r) => r.kind === kind)
+          if (ofKind.length || found.length) return ofKind.length ? ofKind : found
+        } catch {
+          // fall back to TMDB
+        }
+      }
       return opts.tmdbKey ? tmdb(kind, q, opts.tmdbKey, opts.language) : []
+    }
     case 'music':
       return itunesAlbums(q, opts.language)
   }

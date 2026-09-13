@@ -63,7 +63,7 @@ function Report({ report }: { report: AppReport }): ReactNode {
         <div className="grow" style={{ minWidth: 0 }}>
           <h1 className="page-title truncate">{link?.name ?? app.displayName}</h1>
           <div className="small muted truncate" title={app.exePath}>
-            {app.exePath}
+            {app.exePath.startsWith('site:') ? app.exeName : app.exePath}
           </div>
         </div>
         <Select value={String(app.categoryId ?? '')} onChange={(e) => void api.updateApp(app.id, { categoryId: e.target.value ? Number(e.target.value) : null })}>

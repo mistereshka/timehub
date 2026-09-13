@@ -20,6 +20,8 @@ import { EpicConnector } from './integrations/epic'
 import { AniLibConnector } from './integrations/anilib'
 import { ShikimoriConnector } from './integrations/shikimori'
 import { TmdbConnector, searchLibrary } from './integrations/search'
+import { BattleNetConnector } from './integrations/battlenet'
+import { NewDeafConnector, newDeafBase } from './integrations/newdeaf'
 import { PresenceService } from './integrations/presence'
 import { Reminders } from './reminders'
 import appIcon from '../../resources/icon.png?asset'
@@ -74,6 +76,8 @@ async function main(): Promise<void> {
   const service = new Service(db, { language, onChange: broadcast })
   // Looking at your own stats isn't activity: timehub never tracks itself.
   service.forgetApps({ paths: [process.execPath], names: ['timehub.exe'] })
+  // Once: past browser time on known sites (YouTube…) moves from "Chrome" to those sites.
+  service.splitBrowserSessionsBySite()
   const tracker = new Tracker(service, () => broadcast('tracker'))
 
   // Connections (Steam, Roblox, music, Spotify, GitHub, calendars, Discord, AniLib…)
@@ -90,7 +94,9 @@ async function main(): Promise<void> {
     new EpicConnector(),
     new AniLibConnector(),
     new ShikimoriConnector(),
-    new TmdbConnector()
+    new TmdbConnector(),
+    new BattleNetConnector(),
+    new NewDeafConnector()
   )
   const presence = new PresenceService(service, connections, () => broadcast('tracker'))
   const trackerStatus = (): TrackerStatus => {
@@ -145,7 +151,11 @@ async function main(): Promise<void> {
     getSpotifyOverview: () =>
       connections.isEnabled('spotify') ? connections.get<SpotifyConnector>('spotify').overview(connections.env('spotify')) : null,
     searchLibrary: (kind, query) =>
-      searchLibrary(kind, query, { tmdbKey: connections.env('tmdb').secret('apiKey'), language: service.getSettings().language }),
+      searchLibrary(kind, query, {
+        tmdbKey: connections.env('tmdb').secret('apiKey'),
+        newdeafBase: connections.isEnabled('newdeaf') ? newDeafBase(connections.env('newdeaf').settings()) : null,
+        language: service.getSettings().language
+      }),
     testReminder: () => reminders.test()
   }
   registerIpc(service, host)
@@ -188,6 +198,7 @@ async function main(): Promise<void> {
   })
 
   await tracker.start()
+  tracker.ensureSiteIcons()
   await connections.startAll()
 }
 

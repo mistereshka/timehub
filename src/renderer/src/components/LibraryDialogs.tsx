@@ -16,7 +16,8 @@ export const KIND_EMOJI: Record<LibraryKind, string> = {
 }
 
 const SOURCE_NAMES: Record<string, string> = {
-  anilib: 'AniLib', mangalib: 'MangaLib', ranobelib: 'RanobeLib', shikimori: 'Shikimori', steam: 'Steam', tracker: 'timehub'
+  anilib: 'AniLib', mangalib: 'MangaLib', ranobelib: 'RanobeLib', shikimori: 'Shikimori', steam: 'Steam', tracker: 'timehub',
+  battlenet: 'Battle.net', newdeaf: 'NewDeaf'
 }
 export const sourceName = (source: string, t: (k: MessageKey) => string): string => SOURCE_NAMES[source] ?? t('lib.source.manual')
 

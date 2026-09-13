@@ -6,6 +6,7 @@ import { computeStreak, occursOn } from './recurrence'
 import { currentStreak, longestStreak } from './streak'
 import { editorProject, isCodeEditor } from './projects'
 import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, prettifyExeName } from './catalog'
+import { detectSite, isBrowserExe } from './sites'
 
 export interface ServiceOptions {
   now?: () => number
@@ -24,6 +25,8 @@ export interface ActivitySample {
   idleMs: number
   /** Friendly name from the executable's version info, if known */
   displayName?: string
+  /** Category for a new app when it's known up front (sites split out of a browser) */
+  categoryKey?: import('./catalog').CategoryKey
 }
 
 export interface SampleOptions {
@@ -959,7 +962,12 @@ export class Service {
     this.notify('meta')
   }
 
-  ensureApp(exePath: string, exeName: string, displayName?: string): { app: T.AppInfo; created: boolean } {
+  ensureApp(
+    exePath: string,
+    exeName: string,
+    displayName?: string,
+    categoryKey?: import('./catalog').CategoryKey
+  ): { app: T.AppInfo; created: boolean } {
     const path = exePath || exeName
     const key = path.toLowerCase()
     const cached = this.appCache.get(key)
@@ -968,7 +976,7 @@ export class Service {
     let created = false
     if (!row) {
       const isGame = looksLikeGame(exeName, exePath)
-      const category = this.db.get('SELECT id FROM categories WHERE key = ?', [guessCategoryKey(exeName, isGame)])
+      const category = this.db.get('SELECT id FROM categories WHERE key = ?', [categoryKey ?? guessCategoryKey(exeName, isGame)])
       const name = displayName?.trim() || prettifyExeName(exeName)
       const { lastId } = this.db.run(
         'INSERT INTO apps (exe_path, exe_name, display_name, category_id, is_game, first_seen) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1137,7 +1145,7 @@ export class Service {
       this.closeActivity(s.at - s.idleMs)
       return { state: 'idle' }
     }
-    const { app, created } = this.ensureApp(s.exePath, s.exeName, s.displayName)
+    const { app, created } = this.ensureApp(s.exePath, s.exeName, s.displayName, s.categoryKey)
     const maxGap = o.intervalMs * 2 + 2000
     if (app.ignored) {
       // Switching to an ignored app ends the previous activity at the switch, like any app change.
@@ -1683,6 +1691,33 @@ export class Service {
   setLibraryCover(id: T.ID, url: string): void {
     this.db.run('UPDATE library_items SET cover_url = ? WHERE id = ?', [url, id])
     this.notify('library')
+  }
+
+  /**
+   * Runs once: past browser sessions whose tab title names a known site
+   * (YouTube, Яндекс Музыка, GitHub…) move from the browser to that site.
+   */
+  splitBrowserSessionsBySite(): number {
+    if (this.readSetting('_sitesSplit')) return 0
+    let moved = 0
+    transaction(this.db, () => {
+      const browsers = (this.db.all('SELECT id, exe_name FROM apps') as { id: T.ID; exe_name: string }[]).filter((a) => isBrowserExe(a.exe_name))
+      for (const b of browsers) {
+        for (const s of this.db.all(`SELECT id, title FROM activity_sessions WHERE app_id = ? AND title <> ''`, [b.id])) {
+          const site = detectSite(String(s.title))
+          if (!site) continue
+          const { app } = this.ensureApp(`site:${site.key}`, site.domain, site.name, site.category)
+          this.db.run('UPDATE activity_sessions SET app_id = ?, title = ? WHERE id = ?', [app.id, site.pageTitle.slice(0, MAX_TITLE_LENGTH), s.id])
+          moved++
+        }
+      }
+      this.writeSetting('_sitesSplit', 1)
+    })
+    if (moved) {
+      this.notify('meta')
+      this.notify('activity')
+    }
+    return moved
   }
 
   /** Removes apps that must never be tracked (timehub itself) together with their history. */

@@ -4,6 +4,51 @@ import { parseRobloxLog } from './roblox'
 import { expandIcs } from './calendar'
 import { LIB_SITES, mapLibBookmark, parseLibUserId } from './anilib'
 import { mergePlaytime, type Playtime } from './steam'
+import { blizzardGames, parseUninstall } from './battlenet'
+import { parseNewDeafResults } from './newdeaf'
+
+describe('battle.net', () => {
+  it('finds Blizzard games in the uninstall registry', () => {
+    const text = String.raw`
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Hearthstone
+    DisplayName    REG_SZ    Hearthstone
+    InstallLocation    REG_SZ    C:\Program Files (x86)\Hearthstone
+    Publisher    REG_SZ    Blizzard Entertainment
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Battle.net
+    DisplayName    REG_SZ    Battle.net
+    InstallLocation    REG_SZ    C:\Program Files (x86)\Battle.net
+    Publisher    REG_SZ    Blizzard Entertainment
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\7-Zip
+    DisplayName    REG_SZ    7-Zip
+    Publisher    REG_SZ    Igor Pavlov
+`
+    expect(blizzardGames(parseUninstall(text))).toEqual([
+      { key: 'Hearthstone', name: 'Hearthstone', installDir: String.raw`C:\Program Files (x86)\Hearthstone` }
+    ])
+  })
+})
+
+describe('newdeaf', () => {
+  it('reads posters and links from a listing', () => {
+    const html = `
+<div class="th-item"><a class="th-in" href="https://13sep.newdeaf.co/serial/13609-v-chetyre-ruki-1-season-subtitry.html">
+  <div class="th-img"><img src="data:image/png;base64,AAAA" data-src="https://static.cdnlbox.club/poster/web/2026/e6be.webp" alt="В четыре руки - NewDeaf с субтитрами"></div></a></div>
+<a href="https://13sep.newdeaf.co/film/100-dyuna-subtitry.html"><img data-src="https://static.cdnlbox.club/poster/web/2021/dune.webp" alt="Дюна - NewDeaf с субтитрами"></a>
+<a href="https://13sep.newdeaf.co/serial/13609-v-chetyre-ruki-1-season-subtitry.html">В четыре руки</a>`
+    expect(parseNewDeafResults(html)).toEqual([
+      {
+        kind: 'series', title: 'В четыре руки', originalTitle: '', coverUrl: 'https://static.cdnlbox.club/poster/web/2026/e6be.webp', year: null,
+        total: null, format: 'Сериал', url: 'https://13sep.newdeaf.co/serial/13609-v-chetyre-ruki-1-season-subtitry.html', source: 'newdeaf'
+      },
+      {
+        kind: 'movie', title: 'Дюна', originalTitle: '', coverUrl: 'https://static.cdnlbox.club/poster/web/2021/dune.webp', year: null,
+        total: null, format: 'Фильм', url: 'https://13sep.newdeaf.co/film/100-dyuna-subtitry.html', source: 'newdeaf'
+      }
+    ])
+  })
+})
 
 describe('steam accounts', () => {
   it('adds up playtime of the same game across accounts', () => {

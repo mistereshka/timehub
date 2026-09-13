@@ -210,6 +210,8 @@ function demoConnections(lang: Lang): Map<ConnectionKey, ConnectionStatus> {
     base('steam', { enabled: true, connected: true, account: 'demo_player', detail: ru ? '42 игры в библиотеке · 18 установлено' : '42 games in the library · 18 installed', lastSync: Date.now() - 2 * hour }),
     base('roblox', { enabled: true, connected: true, detail: ru ? 'Ждёт, пока вы зайдёте в игру' : 'Waiting for you to join an experience' }),
     base('epic', { enabled: true, connected: true, detail: ru ? '3 игры установлено' : '3 games installed', lastSync: Date.now() - 2 * hour }),
+    base('battlenet', { enabled: true, connected: true, detail: ru ? 'Игр установлено: 1 · Hearthstone' : '1 installed · Hearthstone' }),
+    base('newdeaf', { enabled: true, connected: true, detail: ru ? 'В библиотеке: 2' : 'In the library: 2' }),
     base('media', { enabled: true, connected: true, detail: ru ? 'Сейчас: Spotify' : 'Now: Spotify' }),
     base('spotify'),
     base('discord', { settings: { mode: 'timer' } }),

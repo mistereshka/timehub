@@ -261,7 +261,7 @@ export interface AppPatch {
   scrubTitles?: boolean
 }
 
-export type GameProvider = 'steam' | 'roblox' | 'epic' | 'riot'
+export type GameProvider = 'steam' | 'roblox' | 'epic' | 'riot' | 'battlenet'
 /** External identity of a tracked app, e.g. a Steam app id. */
 export interface AppLink {
   appId: ID
@@ -469,6 +469,8 @@ export type ConnectionKey =
   | 'anilib'
   | 'shikimori'
   | 'tmdb'
+  | 'battlenet'
+  | 'newdeaf'
 export interface ConnectionStatus {
   key: ConnectionKey
   enabled: boolean
@@ -507,7 +509,7 @@ export interface SpotifyOverview {
 export type LibraryKind = 'anime' | 'manga' | 'book' | 'movie' | 'series' | 'game' | 'music'
 /** active = watching / reading / playing, depending on the kind */
 export type LibraryStatus = 'active' | 'planned' | 'completed' | 'dropped' | 'on_hold' | 'rewatching'
-export type LibrarySource = 'manual' | 'anilib' | 'mangalib' | 'ranobelib' | 'shikimori' | 'steam' | 'tracker'
+export type LibrarySource = 'manual' | 'anilib' | 'mangalib' | 'ranobelib' | 'shikimori' | 'steam' | 'tracker' | 'battlenet' | 'newdeaf'
 
 export interface LibraryItem {
   id: ID

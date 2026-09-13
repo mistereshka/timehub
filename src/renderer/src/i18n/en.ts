@@ -663,7 +663,13 @@ export const en = {
   'settings.remindMin': '{n} min before',
   'settings.remindTest': 'Send a test notification',
   'settings.remindTestSent': 'Sent — look at the corner of the screen.',
-  'settings.remindUnsupported': 'Notifications work only in the Windows app.'
+  'settings.remindUnsupported': 'Notifications work only in the Windows app.',
+
+  'conn.battlenet.name': 'Battle.net',
+  'conn.battlenet.desc': 'Finds installed Blizzard games (Hearthstone, Overwatch, WoW, Diablo…), links them to the tracker and adds them to the library.',
+  'conn.newdeaf.name': 'NewDeaf — films and series',
+  'conn.newdeaf.desc': 'Watch a film or an episode on NewDeaf for 10+ minutes and it lands in the library with its poster. Film and series search uses the site too.',
+  'conn.field.siteUrl': 'Site address (mirror)'
 }
 
 export type MessageKey = keyof typeof en
