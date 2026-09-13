@@ -117,6 +117,16 @@ export const MIGRATIONS: string[] = [
     category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
     created_at INTEGER NOT NULL
   );
+  `,
+  // v2: crash handlers / updaters inside game folders were detected as games.
+  `
+  UPDATE apps SET is_game = 0, category_id = (SELECT id FROM categories WHERE key = 'other')
+  WHERE is_game = 1 AND (
+    lower(exe_name) LIKE '%crash%' OR lower(exe_name) LIKE '%report%' OR lower(exe_name) LIKE '%updat%' OR
+    lower(exe_name) LIKE '%launcher%' OR lower(exe_name) LIKE '%helper%' OR lower(exe_name) LIKE '%service%' OR
+    lower(exe_name) LIKE '%install%' OR lower(exe_name) LIKE '%setup%' OR lower(exe_name) LIKE '%anticheat%' OR
+    lower(exe_name) LIKE '%bootstrap%' OR lower(exe_name) LIKE '%overlay%'
+  );
   `
 ]
 

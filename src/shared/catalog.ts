@@ -84,10 +84,15 @@ const GAME_EXES = new Set([
   'starrail.exe', 'zenlesszonezero.exe', 'deadlock.exe', 'marvel-win64-shipping.exe', 'helldivers2.exe'
 ])
 
+/** Helper processes that live in game folders but aren't games. */
+const NOT_A_GAME =
+  /crash|report|updat|launcher|helper|service|install|setup|uninst|anti-?cheat|battleye|bootstrap|redist|overlay|prereq/i
+
 export function looksLikeGame(exeName: string, exePath: string): boolean {
   const exe = exeName.toLowerCase()
   if (LAUNCHERS.has(exe)) return false
   if (GAME_EXES.has(exe)) return true
+  if (NOT_A_GAME.test(exe)) return false
   const path = exePath.toLowerCase()
   return GAME_PATH_MARKERS.some((m) => path.includes(m))
 }
