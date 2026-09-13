@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { ActivitySession, TimeEntry } from '@shared/types'
 import { DAY, HOUR, MINUTE, formatHM, pad2, startOfDayMs, todayKey } from '@shared/time'
-import { buildAgenda } from '@shared/schedule'
+import { buildAgenda, groupShortBlocks } from '@shared/schedule'
 import { useApp } from '../context'
 import { useNow } from '../hooks'
 import { useI18n } from '../i18n'
@@ -9,6 +9,10 @@ import { categoryName } from '../utils'
 import { AppIcon } from './common'
 
 const HOUR_PX = 56
+/** A block needs this much height to show its icon and name. */
+const LABEL_PX = 18
+/** Short app switches are grouped until they are tall enough for a label (~20 min). */
+const GROUP_MS = Math.ceil((LABEL_PX / HOUR_PX) * 60) * MINUTE
 
 /** Something planned for the day: a calendar event or a task with a start time. */
 export interface PlanBlock {
@@ -51,7 +55,7 @@ export function DayTimeline({
   const height = (lastHour - firstHour) * HOUR_PX
   const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, i) => firstHour + i)
 
-  const blocks = buildAgenda(sessions, { from, to: from + DAY, noiseMs: 0, mergeGapMs: MINUTE, minBlockMs: 0 })
+  const blocks = groupShortBlocks(buildAgenda(sessions, { from, to: from + DAY, noiseMs: 0, mergeGapMs: MINUTE, minBlockMs: 0 }), GROUP_MS)
   const block = (key: string, start: number, end: number, color: string, tip: string, body: ReactNode, dashed = false): ReactNode => {
     const top = y(start)
     const h = Math.max(2, y(end) - top)
@@ -62,7 +66,7 @@ export function DayTimeline({
         title={tip}
         style={{ top, height: h, borderColor: color, background: dashed ? undefined : `color-mix(in srgb, ${color} 16%, var(--bgColor-default))` }}
       >
-        {h >= 18 && body}
+        {h >= LABEL_PX && body}
       </div>
     )
   }
@@ -93,10 +97,15 @@ export function DayTimeline({
                 const app = appById.get(b.appId)
                 const cat = categoryById.get(b.categoryId)
                 const color = cat?.color ?? '#8b949e'
+                const name = app?.displayName ?? '?'
+                const others = b.apps.length - 1
                 const tip = [
-                  `${formatHM(b.start)}–${formatHM(b.end)} · ${app?.displayName ?? '?'} · ${duration(b.activeMs)}`,
-                  categoryName(cat, t),
-                  ...b.titles.map((x) => `${x.title} — ${duration(x.ms)}`)
+                  others > 0
+                    ? `${formatHM(b.start)}–${formatHM(b.end)} · ${duration(b.activeMs)}`
+                    : `${formatHM(b.start)}–${formatHM(b.end)} · ${name} · ${duration(b.activeMs)}`,
+                  ...(others > 0
+                    ? b.apps.map((a) => `${appById.get(a.appId)?.displayName ?? '?'} — ${duration(a.ms)}`)
+                    : [categoryName(cat, t), ...b.titles.map((x) => `${x.title} — ${duration(x.ms)}`)])
                 ].join('\n')
                 return block(
                   `${b.appId}-${b.start}`,
@@ -105,8 +114,11 @@ export function DayTimeline({
                   color,
                   tip,
                   <>
-                    <AppIcon icon={app?.icon} name={app?.displayName ?? '?'} size={14} color={color} />
-                    <span className="truncate grow">{app?.displayName}</span>
+                    <AppIcon icon={app?.icon} name={name} size={14} color={color} />
+                    <span className="truncate grow">
+                      {name}
+                      {others > 0 && <span className="muted"> +{others}</span>}
+                    </span>
                     <span className="muted nowrap">{duration(b.activeMs)}</span>
                   </>
                 )
