@@ -27,6 +27,18 @@ describe('day timeline', () => {
     expect(out[0]).toMatchObject({ appId: 1, apps: [{ appId: 1, ms: 60 * MINUTE }], titles: [{ title: 'window 1', ms: 60 * MINUTE }] })
   })
 
+  it('joins neighbours led by the same app and swallows a leftover short piece', () => {
+    const out = groupShortBlocks([block(1, 0, 30), block(1, 35, 65), block(2, 65, 66), block(1, 66, 90), block(3, 90, 130)], 20 * MINUTE)
+    expect(out.map((b) => [b.start / MINUTE, b.end / MINUTE, b.appId])).toEqual([
+      [0, 90, 1],
+      [90, 130, 3]
+    ])
+    expect(out[0].apps).toEqual([
+      { appId: 1, categoryId: 1, ms: 84 * MINUTE },
+      { appId: 2, categoryId: 2, ms: MINUTE }
+    ])
+  })
+
   it('does not glue switches across a pause', () => {
     const out = groupShortBlocks([block(2, 200, 201), block(3, 210, 211)], 20 * MINUTE)
     expect(out).toHaveLength(2)

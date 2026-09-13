@@ -277,6 +277,10 @@ export const MIGRATIONS: string[] = [
         OR lower(source) LIKE '%firefox%' OR lower(source) LIKE '%308046b0af4a39cb%' OR lower(source) LIKE '%opera%'
         OR lower(source) LIKE '%brave%' OR lower(source) LIKE '%vivaldi%' OR lower(source) LIKE '%yandexbrowser%');
   CREATE INDEX media_sessions_kind ON media_sessions(kind, start_ms);
+  `,
+  // v6: Telegram voice and video messages aren't music either (see mediaKind).
+  `
+  UPDATE media_sessions SET kind = 'video' WHERE album = '' AND lower(source) LIKE '%telegram%';
   `
 ]
 

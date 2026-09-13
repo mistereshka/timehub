@@ -72,7 +72,7 @@ export interface TimelineBlock {
   titles: { title: string; ms: number }[]
 }
 
-function mergeTitles(group: AgendaBlock[]): { title: string; ms: number }[] {
+function mergeTitles(group: { titles: { title: string; ms: number }[] }[]): { title: string; ms: number }[] {
   const byTitle = new Map<string, number>()
   for (const b of group) for (const x of b.titles) byTitle.set(x.title, (byTitle.get(x.title) ?? 0) + x.ms)
   return [...byTitle]
@@ -81,13 +81,39 @@ function mergeTitles(group: AgendaBlock[]): { title: string; ms: number }[] {
     .slice(0, 5)
 }
 
+function joinBlocks(a: TimelineBlock, b: TimelineBlock): TimelineBlock {
+  const apps = new Map(a.apps.map((x) => [x.appId, { ...x }]))
+  for (const x of b.apps) {
+    const cur = apps.get(x.appId)
+    if (cur) cur.ms += x.ms
+    else apps.set(x.appId, { ...x })
+  }
+  const list = [...apps.values()].sort((x, y) => y.ms - x.ms)
+  return {
+    start: a.start,
+    end: Math.max(a.end, b.end),
+    appId: list[0].appId,
+    categoryId: list[0].categoryId,
+    activeMs: a.activeMs + b.activeMs,
+    apps: list,
+    titles: list.length === 1 ? mergeTitles([a, b]) : []
+  }
+}
+
 /**
  * Quick alt-tabs make blocks too thin to read (a stack of 2-pixel stripes).
  * Consecutive short blocks are grouped until the group spans `minSpanMs`; it is
- * shown as its most-used app "+N" and lists every app on hover. Blocks that are
- * long enough on their own stay as they are.
+ * shown as its most-used app "+N" and lists every app on hover. Then neighbours
+ * led by the same app ("Chrome +6", "Chrome", "Chrome") become one stretch, and
+ * a leftover short piece joins the block next to it. Two long blocks of
+ * different apps always stay apart.
  */
-export function groupShortBlocks(blocks: AgendaBlock[], minSpanMs: number, maxGapMs = 2 * MINUTE): TimelineBlock[] {
+export function groupShortBlocks(
+  blocks: AgendaBlock[],
+  minSpanMs: number,
+  maxGapMs = 2 * MINUTE,
+  sameAppGapMs = 10 * MINUTE
+): TimelineBlock[] {
   const out: TimelineBlock[] = []
   let group: AgendaBlock[] = []
   const flush = (): void => {
@@ -118,5 +144,18 @@ export function groupShortBlocks(blocks: AgendaBlock[], minSpanMs: number, maxGa
     if (long || b.end - group[0].start >= minSpanMs) flush()
   }
   flush()
-  return out
+
+  const span = (b: TimelineBlock): number => b.end - b.start
+  const joinable = (a: TimelineBlock, b: TimelineBlock): boolean => {
+    const gap = b.start - a.end
+    if (a.appId === b.appId) return gap <= sameAppGapMs
+    return gap <= maxGapMs && (span(a) < minSpanMs || span(b) < minSpanMs)
+  }
+  const merged: TimelineBlock[] = []
+  for (const b of out) {
+    const prev = merged[merged.length - 1]
+    if (prev && joinable(prev, b)) merged[merged.length - 1] = joinBlocks(prev, b)
+    else merged.push(b)
+  }
+  return merged
 }

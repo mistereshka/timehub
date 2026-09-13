@@ -18,7 +18,16 @@ $mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMa
 $last = ''; $lastTrack = ''; $beat = [DateTime]::MinValue
 while ($true) {
   try {
-    $s = $mgr.GetCurrentSession()
+    # Not just the "current" session: Telegram or a paused tab can hold that spot while music plays
+    # elsewhere. Prefer a playing session, and among those one with an album (music over videos).
+    $s = $null; $bestScore = -1
+    foreach ($c in @($mgr.GetSessions())) {
+      if ([string]$c.GetPlaybackInfo().PlaybackStatus -ne 'Playing') { continue }
+      $cp = Await ($c.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+      $score = 1 + [int][bool]$cp.AlbumTitle
+      if ($score -gt $bestScore) { $s = $c; $bestScore = $score }
+    }
+    if ($null -eq $s) { $s = $mgr.GetCurrentSession() }
     if ($null -eq $s) { $key = 'none'; $obj = @{ none = $true } }
     else {
       $p = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])

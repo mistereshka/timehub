@@ -74,6 +74,7 @@ interface OpenMedia extends OpenSpan {
   source: string
   title: string
   artist: string
+  album: string
   kind: T.MediaKind
 }
 
@@ -1295,15 +1296,21 @@ export class Service {
     }
     const kind = s.kind ?? 'music'
     const continuous = cur != null && s.at - cur.end <= maxGap
-    if (cur && continuous && cur.source === s.source && cur.title === s.title && cur.artist === s.artist && cur.kind === kind) {
+    if (cur && continuous && cur.source === s.source && cur.title === s.title && cur.artist === s.artist) {
       this.extendSpan('media_sessions', cur, s.at)
+      // Some sites (Yandex Music) fill in the album a moment after the title — the same track becomes music.
+      if (s.album && (!cur.album || cur.kind !== kind)) {
+        this.db.run('UPDATE media_sessions SET album = ?, kind = ? WHERE id = ?', [s.album.slice(0, MAX_TITLE_LENGTH), kind, cur.id])
+        cur.album = s.album
+        cur.kind = kind
+      }
     } else {
       if (cur) this.finishMedia(cur, s.at, maxGap)
       const { lastId } = this.db.run(
         'INSERT INTO media_sessions (source, title, artist, album, kind, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [s.source, s.title.slice(0, MAX_TITLE_LENGTH), s.artist.slice(0, MAX_TITLE_LENGTH), s.album.slice(0, MAX_TITLE_LENGTH), kind, s.at, s.at]
       )
-      this.media = { id: lastId, source: s.source, title: s.title, artist: s.artist, kind, start: s.at, end: s.at }
+      this.media = { id: lastId, source: s.source, title: s.title, artist: s.artist, album: s.album, kind, start: s.at, end: s.at }
     }
     this.notify('music')
   }

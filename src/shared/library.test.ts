@@ -68,6 +68,20 @@ describe('library', () => {
     expect(mediaKind({ source: 'Chrome', artist: 'Some channel', album: '' })).toBe('video')
     expect(mediaKind({ source: 'Chrome', artist: 'Daft Punk', album: 'Discovery' })).toBe('music')
     expect(mediaKind({ source: 'MSEdge', artist: 'Daft Punk - Topic', album: '' })).toBe('music')
+    expect(mediaKind({ source: 'Telegram.TelegramDesktop', artist: 'Friend', album: '' })).toBe('video')
+  })
+
+  it('turns a browser track into music when the album arrives a moment later', () => {
+    const { svc, clock } = setup()
+    const base = { source: 'Chrome', title: 'Группа крови', artist: 'Кино', playing: true }
+    svc.recordMedia({ ...base, at: clock.now, album: '', kind: 'video' }, 10_000)
+    svc.recordMedia({ ...base, at: clock.now + 10_000, album: 'Группа крови', kind: 'music' }, 10_000)
+    svc.recordMedia({ ...base, at: clock.now + 20_000, album: 'Группа крови', kind: 'music' }, 10_000)
+    svc.closeMedia(clock.now + 30_000)
+    const music = svc.getMusic(clock.now - MINUTE, clock.now + MINUTE)
+    expect(music.plays).toBe(1)
+    // the session ends at the last sample, like every other span
+    expect(music.totalMs).toBe(20_000)
   })
 
   it('keeps videos out of music and turns listening into library items', () => {
