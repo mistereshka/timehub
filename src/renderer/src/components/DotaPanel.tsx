@@ -14,7 +14,8 @@ const pct = (wins: number, games: number): number => (games ? Math.round((wins /
 export function DotaPanel(): ReactNode {
   const { t } = useI18n()
   const [account, setAccount] = useState<string | null>(null)
-  const stats = useQuery(() => api.getDotaStats(account), [account])
+  // Refetch when Steam finishes syncing (its accounts are what we look up).
+  const stats = useQuery(() => api.getDotaStats(account), [account], ['connections'])
   if (stats.error) {
     return <div className="box box-body mb-3 small fg-danger">{errorMessage(stats.error)}</div>
   }

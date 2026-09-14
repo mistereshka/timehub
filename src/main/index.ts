@@ -9,7 +9,7 @@ import { openNodeDb } from './db'
 import { Tracker } from './tracker/tracker'
 import { createTray } from './tray'
 import { Connections } from './integrations/connections'
-import { SteamConnector } from './integrations/steam'
+import { SteamConnector, readSteamLocal } from './integrations/steam'
 import { RobloxConnector } from './integrations/roblox'
 import { MediaConnector } from './integrations/media'
 import { SpotifyConnector } from './integrations/spotify'
@@ -101,7 +101,12 @@ async function main(): Promise<void> {
   )
   const presence = new PresenceService(service, connections, () => broadcast('tracker'))
   const dota = new DotaService(
-    () => connections.get<SteamConnector>('steam').steamIds(),
+    async () => {
+      const ids = connections.get<SteamConnector>('steam').steamIds()
+      if (ids.length) return ids
+      // Right after launch Steam hasn't synced yet: read the accounts straight from disk.
+      return (await readSteamLocal())?.accounts.map((a) => a.steamId64) ?? []
+    },
     () => service.getSettings().language
   )
   const trackerStatus = (): TrackerStatus => {

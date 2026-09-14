@@ -9,6 +9,9 @@ const TTL_MS = 10 * 60_000
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Raw = any
 
+/** A failing or 404 request (an account without Dota data) means "nothing", not a broken panel. */
+const safe = <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null)
+
 const mean = (xs: number[]): number => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 10) / 10 : 0)
 
 /** Dota 2 profile, rank, recent matches and heroes for the Steam accounts on this PC. */
@@ -16,7 +19,7 @@ export class DotaService {
   private readonly cache = new Map<string, { at: number; value: unknown }>()
 
   constructor(
-    private readonly steamIds: () => string[],
+    private readonly steamIds: () => string[] | Promise<string[]>,
     private readonly language: () => Lang
   ) {}
 
@@ -29,11 +32,11 @@ export class DotaService {
   }
 
   async stats(preferred: string | null): Promise<DotaStats | null> {
-    const ids = [...new Set(this.steamIds().map(toAccountId).filter(Boolean))]
+    const ids = [...new Set((await this.steamIds()).map(toAccountId).filter(Boolean))]
     if (!ids.length) return null
     const accounts = await Promise.all(
       ids.map(async (accountId) => {
-        const [profile, wl] = await Promise.all([this.get<Raw>(`/players/${accountId}`), this.get<Raw>(`/players/${accountId}/wl`)])
+        const [profile, wl] = await Promise.all([safe(this.get<Raw>(`/players/${accountId}`)), safe(this.get<Raw>(`/players/${accountId}/wl`))])
         return {
           accountId,
           name: String(profile?.profile?.personaname ?? accountId),
@@ -48,9 +51,9 @@ export class DotaService {
     if (!played.length) return null
     const me = played.find((a) => a.accountId === preferred) ?? played[0]
     const [recentRaw, heroesRaw, heroList] = await Promise.all([
-      this.get<Raw[]>(`/players/${me.accountId}/recentMatches`),
-      this.get<Raw[]>(`/players/${me.accountId}/heroes`),
-      this.get<Raw[]>('/heroes')
+      safe(this.get<Raw[]>(`/players/${me.accountId}/recentMatches`)),
+      safe(this.get<Raw[]>(`/players/${me.accountId}/heroes`)),
+      safe(this.get<Raw[]>('/heroes'))
     ])
     const heroById = new Map((heroList ?? []).map((h: Raw) => [Number(h.id), { name: String(h.localized_name), npc: String(h.name) }]))
     const hero = (id: number): { name: string; image: string | null } => {
