@@ -48,11 +48,13 @@ export interface HostApi {
   searchLibrary(kind: LibraryKind, query: string): LibrarySearchResult[]
   /** Shows a sample Windows notification; false when notifications aren't available. */
   testReminder(): boolean
+  /** Dota 2 stats of a local Steam account (the one with most matches when null). */
+  getDotaStats(accountId: string | null): import('./types').DotaStats | null
 }
 export const HOST_METHODS = [
   'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
   'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
-  'getSpotifyOverview', 'searchLibrary', 'testReminder'
+  'getSpotifyOverview', 'searchLibrary', 'testReminder', 'getDotaStats'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

@@ -3,7 +3,8 @@ import { Service } from '@shared/service'
 import { transaction } from '@shared/sql'
 import { MINUTE, startOfDayMs, todayKey } from '@shared/time'
 import type {
-  ChangeTopic, ConnectionKey, ConnectionStatus, GamePresence, Lang, LibraryKind, LibrarySearchResult, MediaPresence, TrackerStatus
+  ChangeTopic, ConnectionKey, ConnectionStatus, DotaMatch, DotaStats, GamePresence, Lang, LibraryKind, LibrarySearchResult, MediaPresence,
+  TrackerStatus
 } from '@shared/types'
 import { version } from '../../../../package.json'
 import { DEMO_ACTIVITY, DEMO_CALENDAR, DEMO_GAME, DEMO_TRACKS, artDataUrl, seedDemo } from './seed'
@@ -163,6 +164,7 @@ export async function createDemoApi(): Promise<TimehubApi> {
         : null,
     getSpotifyOverview: () => null,
     testReminder: () => false,
+    getDotaStats: () => demoDota(language),
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
@@ -180,6 +182,33 @@ export async function createDemoApi(): Promise<TimehubApi> {
     return () => listeners.delete(listener)
   }
   return api as unknown as TimehubApi
+}
+
+/** Sample Dota 2 stats for the demo (hero art comes from Valve's CDN). */
+function demoDota(lang: Lang): DotaStats {
+  const heroes: [number, string, string][] = [
+    [74, 'Invoker', 'invoker'], [14, 'Pudge', 'pudge'], [8, 'Juggernaut', 'juggernaut'], [5, 'Crystal Maiden', 'crystal_maiden'],
+    [2, 'Axe', 'axe'], [25, 'Lina', 'lina']
+  ]
+  const img = (npc: string): string => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${npc}.png`
+  const now = Date.now()
+  const recent: DotaMatch[] = Array.from({ length: 10 }, (_, i) => {
+    const [heroId, hero, npc] = heroes[i % heroes.length]
+    const win = [0, 1, 3, 4, 7, 9].includes(i)
+    return {
+      matchId: String(8_100_000_000 + i), heroId, hero, heroImage: img(npc), win, kills: 4 + ((i * 3) % 9), deaths: 2 + ((i * 5) % 7),
+      assists: 6 + ((i * 7) % 11), durationSec: 1800 + i * 137, startTime: now - (i + 1) * 5 * 3_600_000,
+      mode: i % 3 === 0 ? (lang === 'ru' ? 'Турбо' : 'Turbo') : lang === 'ru' ? 'Все выбирают' : 'All Pick', ranked: i % 3 !== 0,
+      gpm: 420 + i * 13, xpm: 510 + i * 11, lastHits: 120 + i * 9
+    }
+  })
+  return {
+    accounts: [{ accountId: '1', name: 'demo_player', avatar: null, matches: 231 }],
+    accountId: '1', name: 'demo_player', avatar: null, rankTier: 44, leaderboardRank: null, wins: 120, losses: 111, recent,
+    heroes: heroes.map(([heroId, hero, npc], i) => ({ heroId, hero, heroImage: img(npc), games: 60 - i * 8, wins: 33 - i * 5, lastPlayed: now - i * 86_400_000 })),
+    avg: { kills: 7.8, deaths: 5.1, assists: 11.2, gpm: 478, xpm: 561 },
+    profileUrl: 'https://www.dotabuff.com/players/1'
+  }
 }
 
 function trackPresence(i: number, startedAt: number): MediaPresence {

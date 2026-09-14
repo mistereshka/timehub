@@ -671,5 +671,22 @@ export const ru: Record<MessageKey, string> = {
   'conn.battlenet.desc': 'Находит установленные игры Blizzard (Hearthstone, Overwatch, WoW, Diablo…), привязывает их к трекеру и добавляет в библиотеку.',
   'conn.newdeaf.name': 'NewDeaf — фильмы и сериалы',
   'conn.newdeaf.desc': 'Посмотрите фильм или серию на NewDeaf дольше 10 минут — он появится в библиотеке с постером. Поиск фильмов и сериалов тоже идёт по этому сайту.',
-  'conn.field.siteUrl': 'Адрес сайта (зеркало)'
+  'conn.field.siteUrl': 'Адрес сайта (зеркало)',
+
+  'dota.loading': 'Загружаю матчи Dota 2…',
+  'dota.noMatches': 'Для Steam-аккаунтов этого ПК нет открытых матчей Dota 2. В игре включите: Настройки → Параметры → Социальное → «Открыть общедоступные данные матчей».',
+  'dota.matches': '{n} матч|{n} матча|{n} матчей',
+  'dota.account': 'Аккаунт',
+  'dota.rank': 'Ранг',
+  'dota.unranked': 'Без ранга',
+  'dota.record': 'Победы – поражения',
+  'dota.winrate': 'Процент побед',
+  'dota.avg': 'K / D / A за последние',
+  'dota.profile': 'Профиль на Dotabuff',
+  'dota.recent': 'Последние матчи',
+  'dota.heroes': 'Любимые герои',
+  'dota.ranked': 'рейтинг',
+  'dota.win': 'Победа',
+  'dota.loss': 'Поражение',
+  'dota.source': 'Данные: OpenDota — матчи Valve по вашему Steam-аккаунту, тот же источник, что у Dotabuff. Клик по матчу открывает его на Dotabuff.'
 }

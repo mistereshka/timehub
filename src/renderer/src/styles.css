@@ -1796,6 +1796,97 @@ body {
   align-items: center;
   gap: 8px;
 }
+/* ------------------------------------------------------------ Dota 2 */
+
+.dota-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 16px;
+}
+.dota-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 8px;
+}
+.dota-rank {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.dota-rank img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.dota-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dota-stat .v {
+  font-size: 18px;
+  font-weight: 600;
+}
+.wr-bar {
+  display: block;
+  width: 80px;
+  height: 6px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--bgColor-danger-muted);
+}
+.wr-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--bgColor-success-emphasis);
+}
+.dota-match {
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+}
+button.dota-match {
+  cursor: pointer;
+}
+.dota-match .grow {
+  display: flex;
+  flex-direction: column;
+}
+.dota-hero-img {
+  width: 64px;
+  height: 36px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--bgColor-neutral-muted);
+}
+.dota-result {
+  width: 80px;
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dota-kda {
+  width: 64px;
+  flex: none;
+  text-align: right;
+}
 .status-button {
   display: inline-flex;
   align-items: center;

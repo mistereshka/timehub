@@ -669,7 +669,24 @@ export const en = {
   'conn.battlenet.desc': 'Finds installed Blizzard games (Hearthstone, Overwatch, WoW, Diablo…), links them to the tracker and adds them to the library.',
   'conn.newdeaf.name': 'NewDeaf — films and series',
   'conn.newdeaf.desc': 'Watch a film or an episode on NewDeaf for 10+ minutes and it lands in the library with its poster. Film and series search uses the site too.',
-  'conn.field.siteUrl': 'Site address (mirror)'
+  'conn.field.siteUrl': 'Site address (mirror)',
+
+  'dota.loading': 'Loading Dota 2 matches…',
+  'dota.noMatches': 'No public Dota 2 matches for the Steam accounts on this PC. In Dota 2 turn on Settings → Options → Social → "Expose Public Match Data".',
+  'dota.matches': '{n} match|{n} matches',
+  'dota.account': 'Account',
+  'dota.rank': 'Rank',
+  'dota.unranked': 'Unranked',
+  'dota.record': 'Wins – losses',
+  'dota.winrate': 'Win rate',
+  'dota.avg': 'Recent K / D / A',
+  'dota.profile': 'Dotabuff profile',
+  'dota.recent': 'Recent matches',
+  'dota.heroes': 'Most played heroes',
+  'dota.ranked': 'ranked',
+  'dota.win': 'Win',
+  'dota.loss': 'Loss',
+  'dota.source': 'Data: OpenDota — Valve match data for your Steam account, the same source Dotabuff uses. A click on a match opens it on Dotabuff.'
 }
 
 export type MessageKey = keyof typeof en

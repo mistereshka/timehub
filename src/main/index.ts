@@ -22,6 +22,7 @@ import { ShikimoriConnector } from './integrations/shikimori'
 import { TmdbConnector, searchLibrary } from './integrations/search'
 import { BattleNetConnector } from './integrations/battlenet'
 import { NewDeafConnector, newDeafBase } from './integrations/newdeaf'
+import { DotaService } from './integrations/dota'
 import { PresenceService } from './integrations/presence'
 import { Reminders } from './reminders'
 import appIcon from '../../resources/icon.png?asset'
@@ -99,6 +100,10 @@ async function main(): Promise<void> {
     new NewDeafConnector()
   )
   const presence = new PresenceService(service, connections, () => broadcast('tracker'))
+  const dota = new DotaService(
+    () => connections.get<SteamConnector>('steam').steamIds(),
+    () => service.getSettings().language
+  )
   const trackerStatus = (): TrackerStatus => {
     const s = tracker.getStatus()
     return {
@@ -156,7 +161,8 @@ async function main(): Promise<void> {
         newdeafBase: connections.isEnabled('newdeaf') ? newDeafBase(connections.env('newdeaf').settings()) : null,
         language: service.getSettings().language
       }),
-    testReminder: () => reminders.test()
+    testReminder: () => reminders.test(),
+    getDotaStats: (accountId) => dota.stats(accountId)
   }
   registerIpc(service, host)
 

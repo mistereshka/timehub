@@ -15,6 +15,7 @@ import { useI18n } from '../i18n'
 import { categoryName, libraryStatusLabel, weekdayName } from '../utils'
 import { AppIcon, Blankslate, Stat } from '../components/common'
 import { Bars } from '../components/Bars'
+import { DotaPanel } from '../components/DotaPanel'
 import { HeatLegend, Heatmap } from '../components/Heatmap'
 
 /** Everything about one app or game, for all time. */
@@ -102,6 +103,8 @@ function Report({ report }: { report: AppReport }): ReactNode {
           </div>
         </div>
       )}
+
+      {link?.provider === 'steam' && link.externalId === '570' && <DotaPanel />}
 
       <div className="stat-grid mb-3">
         <Stat icon={<ClockIcon size={14} />} label={t('report.total')} value={duration(report.totalMs)} />

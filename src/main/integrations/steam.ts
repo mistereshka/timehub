@@ -172,6 +172,7 @@ export class SteamConnector implements Connector {
   readonly syncEveryMs = 30 * 60_000
   private local: SteamLocal | null = null
   private owned: OwnedGame[] | null = null
+  private configured: string[] = []
   private readonly players = new TtlCache<number | null>(3 * 60_000)
 
   async sync(env: Env): Promise<void> {
@@ -183,6 +184,7 @@ export class SteamConnector implements Connector {
     const key = env.secret('apiKey')
     // SteamIDs from the settings (comma-separated), otherwise every account signed in on this PC.
     const configured = (env.settings().steamId ?? '').split(/[\s,;]+/).filter((s) => /^\d{17}$/.test(s))
+    this.configured = configured
     const steamIds = configured.length ? configured : this.local.accounts.map((a) => a.steamId64)
     let names = this.local.accounts.map((a) => a.personaName)
     let avatar = this.local.accounts[0]?.avatar ?? null
@@ -276,6 +278,11 @@ export class SteamConnector implements Connector {
 
   reset(): void {
     this.owned = null
+  }
+
+  /** SteamID64s of every account signed in on this PC plus the ones from the settings. */
+  steamIds(): string[] {
+    return [...new Set([...this.configured, ...(this.local?.accounts.map((a) => a.steamId64) ?? [])])]
   }
 
   appForPath(exePath: string): SteamApp | null {

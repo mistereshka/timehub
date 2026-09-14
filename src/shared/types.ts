@@ -450,6 +450,55 @@ export interface TrackerStatus {
   media: MediaPresence | null
 }
 
+/** Dota 2 stats for a Steam account (from OpenDota, which reads Valve's match data). */
+export interface DotaAccount {
+  accountId: string
+  name: string
+  avatar: string | null
+  matches: number
+}
+export interface DotaMatch {
+  matchId: string
+  heroId: number
+  hero: string
+  heroImage: string | null
+  win: boolean
+  kills: number
+  deaths: number
+  assists: number
+  durationSec: number
+  startTime: number
+  mode: string
+  ranked: boolean
+  gpm: number
+  xpm: number
+  lastHits: number
+}
+export interface DotaHero {
+  heroId: number
+  hero: string
+  heroImage: string | null
+  games: number
+  wins: number
+  lastPlayed: number | null
+}
+export interface DotaStats {
+  /** Local Steam accounts that have Dota matches */
+  accounts: DotaAccount[]
+  accountId: string
+  name: string
+  avatar: string | null
+  rankTier: number | null
+  leaderboardRank: number | null
+  wins: number
+  losses: number
+  recent: DotaMatch[]
+  heroes: DotaHero[]
+  /** Averages over the recent matches */
+  avg: { kills: number; deaths: number; assists: number; gpm: number; xpm: number } | null
+  profileUrl: string
+}
+
 export interface GameInfo {
   link: AppLink | null
   details: string | null
