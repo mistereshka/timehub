@@ -42,24 +42,32 @@ export class GamesService {
     const out: InstalledGame[] = []
     this.launches.clear()
     const add = (game: InstalledGame, launch: Launch): void => {
+      if (this.launches.has(game.id)) return // one entry per game
       out.push(game)
       this.launches.set(game.id, launch)
     }
 
     const steam = this.steam()
+    const epic = this.epic().installed()
+    const bnet = this.bnet()
+    // A game the tracker saw inside a Steam/Epic/Battle.net folder is already listed under that store.
+    const storeDirs = [...steam.installedGames().map((g) => g.installDir), ...epic.map((g) => g.installDir), ...bnet.installed().map((g) => g.installDir)]
+      .filter(Boolean)
+      .map((d) => `${d.toLowerCase().replace(/[\\/]+$/, '')}\\`)
+    const inStoreDir = (exePath: string): boolean => storeDirs.some((d) => exePath.toLowerCase().startsWith(d))
+
     for (const g of steam.installedGames()) {
       add(
         { id: `steam:${g.appid}`, name: g.name, platform: 'steam', cover: steamCapsule(g.appid), platformMinutes: steam.playtimeMinutes(g.appid), ...stats(trackedBy('steam', g.appid), g.lastPlayed) },
         { kind: 'url', url: `steam://rungameid/${g.appid}` }
       )
     }
-    for (const g of this.epic().installed()) {
+    for (const g of epic) {
       add(
         { id: `epic:${g.appName}`, name: g.name, platform: 'epic', cover: null, platformMinutes: null, ...stats(trackedBy('epic', g.appName)) },
         { kind: 'url', url: `com.epicgames.launcher://apps/${encodeURIComponent(g.appName)}?action=launch&silent=true` }
       )
     }
-    const bnet = this.bnet()
     const launcher = bnet.launcherPath()
     for (const g of bnet.installed()) {
       const app = trackedBy('battlenet', g.key)
@@ -72,7 +80,7 @@ export class GamesService {
     }
     const covered = new Set(out.map((g) => g.appId).filter((id) => id != null))
     for (const app of apps) {
-      if (!app.isGame || app.ignored || covered.has(app.id) || !app.exePath || !existsSync(app.exePath)) continue
+      if (!app.isGame || app.ignored || covered.has(app.id) || !app.exePath || inStoreDir(app.exePath) || !existsSync(app.exePath)) continue
       add(
         { id: `app:${app.id}`, name: app.displayName, platform: 'other', cover: null, platformMinutes: null, ...stats(app) },
         { kind: 'exe', path: app.exePath, args: [] }

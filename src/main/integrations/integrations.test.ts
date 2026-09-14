@@ -3,7 +3,16 @@ import { parseVdf, vdfGet } from './vdf'
 import { parseRobloxLog } from './roblox'
 import { expandIcs } from './calendar'
 import { LIB_SITES, mapLibBookmark, parseLibUserId } from './anilib'
-import { mergePlaytime, type Playtime } from './steam'
+import { mergePlaytime, uniqueLibraries, type Playtime } from './steam'
+
+describe('steam libraries', () => {
+  it('reads a library once however its path is spelled', () => {
+    expect(uniqueLibraries(['c:/program files (x86)/steam', String.raw`C:\Program Files (x86)\Steam`, 'D:/SteamLibrary/', 'd:/steamlibrary'])).toEqual([
+      'c:/program files (x86)/steam',
+      'D:/SteamLibrary/'
+    ])
+  })
+})
 import { blizzardGames, parseUninstall } from './battlenet'
 import { parseNewDeafResults } from './newdeaf'
 

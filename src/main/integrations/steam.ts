@@ -66,25 +66,38 @@ function registrySteamPath(): Promise<string | null> {
   })
 }
 
+/**
+ * The registry spells the main library "c:/program files (x86)/steam" while
+ * libraryfolders.vdf says "C:\Program Files (x86)\Steam" — the same folder, read once.
+ */
+export function uniqueLibraries(paths: string[]): string[] {
+  const seen = new Map<string, string>()
+  for (const p of paths) {
+    const key = p.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+    if (!seen.has(key)) seen.set(key, p)
+  }
+  return [...seen.values()]
+}
+
 /** Reads the local Steam install: libraries, installed games, account and playtime. No API key needed. */
 export async function readSteamLocal(): Promise<SteamLocal | null> {
   let steamPath = await registrySteamPath()
   if (!steamPath || !(await exists(steamPath))) steamPath = 'C:\\Program Files (x86)\\Steam'
   if (!(await exists(join(steamPath, 'steamapps')))) return null
 
-  const libraries = new Set<string>([steamPath])
+  const paths = [steamPath]
   try {
     const lf = parseVdf(await readFile(join(steamPath, 'steamapps', 'libraryfolders.vdf'), 'utf8'))
     for (const entry of Object.values(vdfObject(vdfGet(lf, 'libraryfolders')))) {
       const path = vdfString(vdfGet(entry, 'path'))
-      if (path) libraries.add(path)
+      if (path) paths.push(path)
     }
   } catch {
     // fall back to the main library only
   }
 
   const apps: SteamApp[] = []
-  for (const lib of libraries) {
+  for (const lib of uniqueLibraries(paths)) {
     const dir = join(lib, 'steamapps')
     let files: string[] = []
     try {
@@ -98,7 +111,7 @@ export async function readSteamLocal(): Promise<SteamLocal | null> {
         const appid = vdfString(vdfGet(state, 'appid'))
         const name = vdfString(vdfGet(state, 'name'))
         const installdir = vdfString(vdfGet(state, 'installdir'))
-        if (appid && name && installdir) apps.push({ appid, name, installDir: join(dir, 'common', installdir) })
+        if (appid && name && installdir && !apps.some((a) => a.appid === appid)) apps.push({ appid, name, installDir: join(dir, 'common', installdir) })
       } catch {
         // skip broken manifests
       }
@@ -281,10 +294,10 @@ export class SteamConnector implements Connector {
   }
 
   /** Games installed on this PC (tools and runtimes skipped), with the last time any local account played them. */
-  installedGames(): { appid: string; name: string; lastPlayed: number }[] {
+  installedGames(): { appid: string; name: string; installDir: string; lastPlayed: number }[] {
     return (this.local?.apps ?? [])
       .filter((a) => !NOT_GAMES.test(a.name))
-      .map((a) => ({ appid: a.appid, name: a.name, lastPlayed: this.local?.playtime.get(a.appid)?.lastPlayed ?? 0 }))
+      .map((a) => ({ appid: a.appid, name: a.name, installDir: a.installDir, lastPlayed: this.local?.playtime.get(a.appid)?.lastPlayed ?? 0 }))
   }
 
   /** SteamID64s of every account signed in on this PC plus the ones from the settings. */
