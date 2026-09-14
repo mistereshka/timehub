@@ -3,8 +3,8 @@ import { Service } from '@shared/service'
 import { transaction } from '@shared/sql'
 import { MINUTE, startOfDayMs, todayKey } from '@shared/time'
 import type {
-  ChangeTopic, ConnectionKey, ConnectionStatus, DotaMatch, DotaStats, GamePresence, Lang, LibraryKind, LibrarySearchResult, MediaPresence,
-  TrackerStatus
+  ChangeTopic, ConnectionKey, ConnectionStatus, DotaMatch, DotaStats, GamePresence, InstalledGame, Lang, LibraryKind, LibrarySearchResult,
+  MediaPresence, TrackerStatus
 } from '@shared/types'
 import { version } from '../../../../package.json'
 import { DEMO_ACTIVITY, DEMO_CALENDAR, DEMO_GAME, DEMO_TRACKS, artDataUrl, seedDemo } from './seed'
@@ -165,6 +165,13 @@ export async function createDemoApi(): Promise<TimehubApi> {
     getSpotifyOverview: () => null,
     testReminder: () => false,
     getDotaStats: () => demoDota(language),
+    scanMusic: () => ({ folders: [], tracks: [] }),
+    addMusicFolder: () => {
+      throw new Error(language === 'ru' ? 'Папки с музыкой добавляются в приложении для Windows.' : 'Music folders can be added in the Windows app.')
+    },
+    mediaControl: () => {},
+    listGames: () => demoGames(gameAppId),
+    launchGame: () => {},
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
@@ -182,6 +189,19 @@ export async function createDemoApi(): Promise<TimehubApi> {
     return () => listeners.delete(listener)
   }
   return api as unknown as TimehubApi
+}
+
+/** A few installed games for the demo's Games tab. */
+function demoGames(gameAppId: number): InstalledGame[] {
+  const now = Date.now()
+  const capsule = (id: string): string => `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/library_600x900.jpg`
+  return [
+    { id: 'steam:1145350', name: 'Hades II', platform: 'steam', cover: capsule('1145350'), icon: null, appId: gameAppId, trackedMs: 150 * 3_600_000, lastPlayed: now - 3_600_000, platformMinutes: 3120 },
+    { id: 'steam:367520', name: 'Hollow Knight', platform: 'steam', cover: capsule('367520'), icon: null, appId: null, trackedMs: 0, lastPlayed: now - 40 * 86_400_000, platformMinutes: 2460 },
+    { id: 'steam:413150', name: 'Stardew Valley', platform: 'steam', cover: capsule('413150'), icon: null, appId: null, trackedMs: 0, lastPlayed: null, platformMinutes: 0 },
+    { id: 'battlenet:Hearthstone', name: 'Hearthstone', platform: 'battlenet', cover: null, icon: null, appId: null, trackedMs: 0, lastPlayed: now - 5 * 86_400_000, platformMinutes: null },
+    { id: 'epic:Fortnite', name: 'Fortnite', platform: 'epic', cover: null, icon: null, appId: null, trackedMs: 0, lastPlayed: null, platformMinutes: null }
+  ]
 }
 
 /** Sample Dota 2 stats for the demo (hero art comes from Valve's CDN). */

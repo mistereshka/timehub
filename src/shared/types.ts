@@ -21,6 +21,8 @@ export interface Settings {
   reminders: boolean
   /** Minutes before the start; 0 = at the start */
   remindBeforeMin: number
+  /** Folders the music player scans; empty = the Windows "Music" folder */
+  musicFolders: string[]
 }
 
 export interface Project {
@@ -448,6 +450,40 @@ export interface TrackerStatus {
   current: { appId: ID; displayName: string; icon: string | null; title: string; since: number } | null
   games: GamePresence[]
   media: MediaPresence | null
+}
+
+/** A file in the local music library. */
+export interface MusicTrack {
+  id: string
+  path: string
+  /** timehub-media:// address the player streams from */
+  url: string
+  title: string
+  artist: string
+  album: string
+  cover: string | null
+  folder: string
+}
+export interface MusicCollection {
+  folders: string[]
+  tracks: MusicTrack[]
+}
+export type MediaAction = 'toggle' | 'next' | 'previous'
+
+export type GamePlatform = 'steam' | 'epic' | 'battlenet' | 'other'
+/** Something installed that the Games tab can start. */
+export interface InstalledGame {
+  id: string
+  name: string
+  platform: GamePlatform
+  cover: string | null
+  icon: string | null
+  /** Tracked app, when timehub has seen it running */
+  appId: ID | null
+  trackedMs: number
+  lastPlayed: number | null
+  /** Playtime the platform reports (Steam) */
+  platformMinutes: number | null
 }
 
 /** Dota 2 stats for a Steam account (from OpenDota, which reads Valve's match data). */

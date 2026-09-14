@@ -23,14 +23,19 @@ import { GoalPage } from './pages/GoalPage'
 import { LibraryPage } from './pages/LibraryPage'
 import { AppReportPage } from './pages/AppReportPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
+import { MusicPage } from './pages/MusicPage'
+import { GamesPage } from './pages/GamesPage'
+import { MusicPlayerProvider, PlayerBar } from './components/MusicPlayer'
 
 export function App(): ReactNode {
   return (
     <AppProvider>
       <Themed>
-        <HashRouter>
-          <Shell />
-        </HashRouter>
+        <MusicPlayerProvider>
+          <HashRouter>
+            <Shell />
+          </HashRouter>
+        </MusicPlayerProvider>
       </Themed>
     </AppProvider>
   )
@@ -101,10 +106,13 @@ function Shell(): ReactNode {
           <Route path="/goals/:id" element={<GoalPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />
+          <Route path="/music" element={<MusicPage />} />
+          <Route path="/games" element={<GamesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
+      <PlayerBar />
       {newTask && <TaskDialog defaults={newTask} onClose={closeNewTask} />}
     </div>
   )

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mediaKind } from '@shared/media'
-import type { MediaPresence } from '@shared/types'
+import type { MediaAction, MediaPresence } from '@shared/types'
 import type { Connector, Env } from './connections'
 import { itunesCover } from './search'
 
@@ -22,6 +22,7 @@ while ($true) {
     # elsewhere. Prefer a playing session, and among those one with an album (music over videos).
     $s = $null; $bestScore = -1
     foreach ($c in @($mgr.GetSessions())) {
+      if ($c.SourceAppUserModelId -like '*timehub*') { continue }
       if ([string]$c.GetPlaybackInfo().PlaybackStatus -ne 'Playing') { continue }
       $cp = Await ($c.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
       $score = 1 + [int][bool]$cp.AlbumTitle
@@ -67,6 +68,39 @@ while ($true) {
 `
 
 const HEARTBEAT_MS = 10_000
+
+// One-shot remote: play/pause, next or previous on another player's Windows media session.
+const CONTROL_SCRIPT = String.raw`
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation${'`'}1' })[0]
+function Await($op, [Type]$type) { $t = $asTask.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(5000) | Out-Null; $t.Result }
+[Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime] | Out-Null
+$mgr = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
+$sessions = @($mgr.GetSessions()) | Where-Object { $_.SourceAppUserModelId -notlike '*timehub*' }
+$s = $sessions | Where-Object { $_.SourceAppUserModelId -eq $prefer } | Select-Object -First 1
+if (-not $s) { $s = $sessions | Where-Object { [string]$_.GetPlaybackInfo().PlaybackStatus -eq 'Playing' } | Select-Object -First 1 }
+if (-not $s) { $s = $sessions | Select-Object -First 1 }
+if ($s) {
+  switch ($action) {
+    'toggle' { Await ($s.TryTogglePlayPauseAsync()) ([bool]) | Out-Null }
+    'next' { Await ($s.TrySkipNextAsync()) ([bool]) | Out-Null }
+    'previous' { Await ($s.TrySkipPreviousAsync()) ([bool]) | Out-Null }
+  }
+}
+`
+
+export function controlMedia(action: MediaAction, prefer: string): Promise<void> {
+  if (process.platform !== 'win32') return Promise.resolve()
+  const quote = (s: string): string => `'${s.replace(/'/g, "''")}'`
+  const script = `$action = ${quote(action)}; $prefer = ${quote(prefer)}\n${CONTROL_SCRIPT}`
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  return new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], { windowsHide: true })
+    p.on('exit', () => resolve())
+    p.on('error', () => resolve())
+  })
+}
 
 /** "Spotify.exe" → "Spotify", "308046B0AF4A39CB" (Firefox) → "Firefox"… */
 export function mediaSourceName(aumid: string): string {
@@ -148,6 +182,11 @@ export class MediaConnector implements Connector {
     }
   }
 
+  /** Remote for whatever plays now (Yandex Music in a browser, Spotify…). */
+  control(action: MediaAction): Promise<void> {
+    return controlMedia(action, this.presence?.source ?? '')
+  }
+
   start(env: Env): void {
     if (process.platform !== 'win32') return
     this.stopped = false
@@ -196,6 +235,8 @@ export class MediaConnector implements Connector {
       return
     }
     const now = Date.now()
+    // timehub's own player logs its plays itself
+    if (msg.app && /timehub/i.test(msg.app)) msg = { none: true }
     if (msg.none || !msg.app || !msg.title) {
       env.service.closeMedia(now)
       if (this.presence) {

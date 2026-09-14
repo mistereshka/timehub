@@ -21,7 +21,7 @@ export const SERVICE_METHODS = [
   'listApps', 'updateApp', 'getAppLink', 'getAppReport', 'getAppStreaks',
   'listSessions', 'getUsage', 'getDailyActive', 'getMonthlyActive', 'getHeatmap', 'getFeed',
   'listRules', 'saveRule', 'deleteRule', 'reapplyRules',
-  'getMusic', 'listCalendarEvents', 'getExternalDays',
+  'getMusic', 'logPlayback', 'listCalendarEvents', 'getExternalDays',
   'listLibrary', 'getLibraryItem', 'saveLibraryItem', 'bumpLibraryProgress', 'deleteLibraryItem'
 ] as const satisfies readonly (keyof Service)[]
 export type ServiceMethod = (typeof SERVICE_METHODS)[number]
@@ -50,11 +50,21 @@ export interface HostApi {
   testReminder(): boolean
   /** Dota 2 stats of a local Steam account (the one with most matches when null). */
   getDotaStats(accountId: string | null): import('./types').DotaStats | null
+  /** Local music from the chosen folders (cached; `rescan` reads them again). */
+  scanMusic(rescan: boolean): import('./types').MusicCollection
+  /** Asks for folders to add to the music library; returns the folder list. */
+  addMusicFolder(): string[]
+  /** Play/pause, next or previous for whatever plays in Windows (Yandex Music in a browser, Spotify…). */
+  mediaControl(action: import('./types').MediaAction): void
+  /** Installed games from Steam, Epic, Battle.net and the tracker. */
+  listGames(): import('./types').InstalledGame[]
+  launchGame(id: string): void
 }
 export const HOST_METHODS = [
   'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
   'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
-  'getSpotifyOverview', 'searchLibrary', 'testReminder', 'getDotaStats'
+  'getSpotifyOverview', 'searchLibrary', 'testReminder', 'getDotaStats', 'scanMusic', 'addMusicFolder', 'mediaControl', 'listGames',
+  'launchGame'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

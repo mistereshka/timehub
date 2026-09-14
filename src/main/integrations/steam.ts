@@ -280,6 +280,13 @@ export class SteamConnector implements Connector {
     this.owned = null
   }
 
+  /** Games installed on this PC (tools and runtimes skipped), with the last time any local account played them. */
+  installedGames(): { appid: string; name: string; lastPlayed: number }[] {
+    return (this.local?.apps ?? [])
+      .filter((a) => !NOT_GAMES.test(a.name))
+      .map((a) => ({ appid: a.appid, name: a.name, lastPlayed: this.local?.playtime.get(a.appid)?.lastPlayed ?? 0 }))
+  }
+
   /** SteamID64s of every account signed in on this PC plus the ones from the settings. */
   steamIds(): string[] {
     return [...new Set([...this.configured, ...(this.local?.accounts.map((a) => a.steamId64) ?? [])])]

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, TextInput, UnderlineNav } from '@primer/react'
 import {
   BookIcon, CalendarIcon, ClockIcon, GearIcon, GoalIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlugIcon, PlusIcon, SearchIcon,
-  PlayIcon, SquareFillIcon, SunIcon, UnmuteIcon
+  PlayIcon, RocketIcon, SquareFillIcon, SunIcon, UnmuteIcon
 } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import type { RunningTimer } from '@shared/types'
@@ -186,6 +186,8 @@ const NAV: { to: string; label: MessageKey; icon: typeof HomeIcon; exact?: boole
   { to: '/tasks', label: 'nav.tasks', icon: IssueOpenedIcon, counter: true, also: ['/labels'] },
   { to: '/goals', label: 'nav.goals', icon: GoalIcon },
   { to: '/library', label: 'nav.library', icon: BookIcon },
+  { to: '/music', label: 'nav.music', icon: UnmuteIcon },
+  { to: '/games', label: 'nav.games', icon: RocketIcon },
   { to: '/schedule', label: 'nav.schedule', icon: ClockIcon },
   { to: '/activity', label: 'nav.activity', icon: GraphIcon },
   { to: '/connections', label: 'nav.connections', icon: PlugIcon },

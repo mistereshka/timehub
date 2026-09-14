@@ -5,7 +5,7 @@ import type { Connector, Env } from './connections'
 
 const MANIFESTS = 'C:\\ProgramData\\Epic\\EpicGamesLauncher\\Data\\Manifests'
 
-interface EpicApp {
+export interface EpicApp {
   appName: string
   name: string
   installDir: string
@@ -43,6 +43,10 @@ export class EpicConnector implements Connector {
     }
     const ru = env.language() === 'ru'
     env.setState({ connected: apps.length > 0, detail: apps.length ? (ru ? `${apps.length} игр установлено` : `${apps.length} games installed`) : null })
+  }
+
+  installed(): EpicApp[] {
+    return this.apps
   }
 
   appForPath(exePath: string): EpicApp | null {

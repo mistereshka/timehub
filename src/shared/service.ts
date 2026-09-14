@@ -115,7 +115,8 @@ export function defaultSettings(language: T.Lang): T.Settings {
     heatmapMetric: 'active',
     weekStartsOn: language === 'ru' ? 1 : 0,
     reminders: true,
-    remindBeforeMin: 5
+    remindBeforeMin: 5,
+    musicFolders: []
   }
 }
 
@@ -1685,6 +1686,26 @@ export class Service {
     })
     if (changed) this.notify('library')
     return changed
+  }
+
+  /** A track heard in timehub's own player (the renderer reports it when it ends or changes). */
+  logPlayback(p: { title: string; artist: string; album: string; start: number; end: number }): void {
+    if (!p.title || p.end - p.start < MIN_MEDIA_MS) return
+    this.db.run('INSERT INTO media_sessions (source, title, artist, album, kind, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+      'timehub', p.title.slice(0, MAX_TITLE_LENGTH), p.artist.slice(0, MAX_TITLE_LENGTH), p.album.slice(0, MAX_TITLE_LENGTH), 'music',
+      p.start, p.end
+    ])
+    this.refreshMusicInLibrary()
+    this.notify('music')
+  }
+
+  /** All-time tracked time and last use per app (the Games tab). */
+  appPlayTotals(): Map<T.ID, { ms: number; last: number }> {
+    const out = new Map<T.ID, { ms: number; last: number }>()
+    for (const r of this.db.all('SELECT app_id AS a, SUM(end_ms - start_ms) AS ms, MAX(end_ms) AS last FROM activity_sessions GROUP BY app_id')) {
+      out.set(r.a as T.ID, { ms: Number(r.ms), last: Number(r.last) })
+    }
+    return out
   }
 
   /** Sets a cover found later (e.g. album art) without touching "recently updated". */

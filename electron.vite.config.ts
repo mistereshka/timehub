@@ -18,7 +18,7 @@ const productionCsp = (): Plugin => ({
       attrs: {
         'http-equiv': 'Content-Security-Policy',
         content:
-          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:"
+          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: timehub-media:; media-src 'self' blob: timehub-media:; font-src 'self' data:"
       },
       injectTo: 'head-prepend'
     }

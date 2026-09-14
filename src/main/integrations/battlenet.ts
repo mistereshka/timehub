@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { AppLink, LibraryImport } from '@shared/types'
 import type { Connector, Env } from './connections'
 
@@ -60,11 +62,15 @@ export class BattleNetConnector implements Connector {
   readonly defaultEnabled = true
   readonly syncEveryMs = 60 * 60_000
   private games: BlizzardGame[] = []
+  private launcherExe: string | null = null
 
   async sync(env: Env): Promise<void> {
     if (process.platform !== 'win32') return
     const entries = parseUninstall((await Promise.all(UNINSTALL_KEYS.map(regQuery))).join('\n'))
-    const launcher = entries.some((e) => /^battle\.net$/i.test(e.name))
+    const app = entries.find((e) => /^battle\.net$/i.test(e.name))
+    const launcher = Boolean(app)
+    const exe = app?.installDir ? join(app.installDir, 'Battle.net.exe') : null
+    this.launcherExe = exe && existsSync(exe) ? exe : null
     this.games = blizzardGames(entries)
 
     const apps = env.service.listApps()
@@ -90,6 +96,14 @@ export class BattleNetConnector implements Connector {
       connected: launcher || n > 0,
       detail: n ? (ru ? `Игр установлено: ${n} · ${this.games.map((g) => g.name).join(', ')}` : `${n} installed · ${this.games.map((g) => g.name).join(', ')}`) : null
     })
+  }
+
+  installed(): BlizzardGame[] {
+    return this.games
+  }
+
+  launcherPath(): string | null {
+    return this.launcherExe
   }
 
   gameForPath(exePath: string): BlizzardGame | null {

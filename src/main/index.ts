@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain, nativeTheme, powerMonitor, session, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, nativeTheme, powerMonitor, protocol, session, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HOST_METHODS, IPC_CHANGED, IPC_INVOKE, SERVICE_METHODS, type HostHandlers } from '@shared/api'
@@ -23,6 +23,8 @@ import { TmdbConnector, searchLibrary } from './integrations/search'
 import { BattleNetConnector } from './integrations/battlenet'
 import { NewDeafConnector, newDeafBase } from './integrations/newdeaf'
 import { DotaService } from './integrations/dota'
+import { MEDIA_SCHEME, MusicLibrary } from './music/library'
+import { GamesService } from './games'
 import { PresenceService } from './integrations/presence'
 import { Reminders } from './reminders'
 import appIcon from '../../resources/icon.png?asset'
@@ -33,6 +35,11 @@ const TITLEBAR_HEIGHT = 48
 
 let win: BrowserWindow | null = null
 let quitting = false
+
+// The music player streams local files through this scheme (must be registered before "ready").
+protocol.registerSchemesAsPrivileged([
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }
+])
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -109,6 +116,14 @@ async function main(): Promise<void> {
     },
     () => service.getSettings().language
   )
+  const music = new MusicLibrary(() => service.getSettings().musicFolders, join(dataPath, 'music-cache.json'))
+  protocol.handle(MEDIA_SCHEME, (request) => music.handle(request))
+  const games = new GamesService(
+    service,
+    () => connections.get<SteamConnector>('steam'),
+    () => connections.get<EpicConnector>('epic'),
+    () => connections.get<BattleNetConnector>('battlenet')
+  )
   const trackerStatus = (): TrackerStatus => {
     const s = tracker.getStatus()
     return {
@@ -167,7 +182,20 @@ async function main(): Promise<void> {
         language: service.getSettings().language
       }),
     testReminder: () => reminders.test(),
-    getDotaStats: (accountId) => dota.stats(accountId)
+    getDotaStats: (accountId) => dota.stats(accountId),
+    scanMusic: (rescan) => music.scan(rescan),
+    addMusicFolder: async () => {
+      const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', 'multiSelections'] })
+      if (!r.canceled && r.filePaths.length) {
+        const current = music.resolvedFolders()
+        service.updateSettings({ musicFolders: [...new Set([...current, ...r.filePaths])] })
+        await music.scan(true)
+      }
+      return music.resolvedFolders()
+    },
+    mediaControl: (action) => media.control(action),
+    listGames: () => games.list(),
+    launchGame: (id) => games.launch(id)
   }
   registerIpc(service, host)
 
