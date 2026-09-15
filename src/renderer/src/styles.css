@@ -83,22 +83,6 @@ a {
 .app-header .no-drag {
   -webkit-app-region: no-drag;
 }
-.app-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 16px;
-  color: var(--fgColor-default);
-  text-decoration: none;
-  flex: none;
-}
-.app-logo-img {
-  width: 32px;
-  height: 32px;
-  flex: none;
-  border-radius: 8px;
-}
 .app-search {
   width: 300px;
   max-width: 30vw;

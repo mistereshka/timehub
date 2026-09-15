@@ -295,6 +295,13 @@ export const MIGRATIONS: string[] = [
   );
   CREATE UNIQUE INDEX calls_source ON calls(exe_path, start_ms);
   CREATE INDEX calls_start ON calls(start_ms);
+  `,
+  // v8: the tracker shelves tracks, not albums. Its album cards go, unless you changed one yourself
+  // (status, favourite, rating or notes); refreshMusicInLibrary() brings the tracks back from history.
+  `
+  DELETE FROM library_items
+    WHERE source = 'tracker' AND kind = 'music' AND external_id LIKE 'music:%'
+      AND status_auto = 1 AND favorite = 0 AND rating IS NULL AND notes = '';
   `
 ]
 

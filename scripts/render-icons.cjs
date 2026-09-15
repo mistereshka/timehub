@@ -8,7 +8,6 @@ const root = join(__dirname, '..')
 const JOBS = [
   // electron-builder turns this into the .ico for the exe, installer and shortcuts
   ['resources/icon.svg', 'resources/icon.png', 1024],
-  ['resources/icon.svg', 'src/renderer/src/assets/logo.png', 128],
   ['resources/tray.svg', 'resources/tray.png', 32],
   ['resources/tray-paused.svg', 'resources/tray-paused.png', 32]
 ]

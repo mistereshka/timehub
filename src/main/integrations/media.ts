@@ -172,10 +172,11 @@ export class MediaConnector implements Connector {
     // iTunes allows ~20 lookups a minute; the rest waits for the next sync.
     for (const item of missing.slice(0, 15)) {
       this.coverTried.add(item.id)
-      const artist = item.originalTitle || item.title
-      const album = item.originalTitle ? item.title : ''
       try {
-        const url = await itunesCover(artist, album)
+        // tracks are looked up as songs; album cards from before v8 as albums
+        const url = item.externalId?.startsWith('track:')
+          ? await itunesTrackCover(item.originalTitle, item.title)
+          : await itunesCover(item.originalTitle || item.title, item.originalTitle ? item.title : '')
         if (url) env.service.setLibraryCover(item.id, url)
       } catch {
         // retried after the next launch

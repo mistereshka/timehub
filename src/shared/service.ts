@@ -1637,9 +1637,9 @@ export class Service {
   }
 
   /**
-   * Albums (or artists, when the player reports no album) you listen to become
-   * music items: played in the last two weeks → "listening", untouched for a
-   * month → "on hold". Progress is the number of plays.
+   * Tracks you listen to become music items — the track as the title, the artist
+   * below it and the album as the format: played in the last two weeks →
+   * "listening", untouched for a month → "on hold". Progress is the number of plays.
    */
   refreshMusicInLibrary(): number {
     const now = this.now()
@@ -1657,10 +1657,12 @@ export class Service {
         end: Number(r.end_ms)
       }))
     const starts = listenStarts(sessions)
-    const groups = new Map<string, { artist: string; album: string; plays: number; ms: number; last: number }>()
+    const groups = new Map<string, { title: string; artist: string; album: string; plays: number; ms: number; last: number }>()
     for (const s of sessions) {
-      const key = `${s.artist.toLowerCase()}|${s.album.toLowerCase()}`
-      const g = groups.get(key) ?? { artist: s.artist, album: s.album, plays: 0, ms: 0, last: 0 }
+      if (!s.title.trim()) continue
+      const key = `${s.artist.toLowerCase()}|${s.title.toLowerCase()}`
+      const g = groups.get(key) ?? { title: s.title, artist: s.artist, album: s.album, plays: 0, ms: 0, last: 0 }
+      if (s.album) g.album = s.album
       g.ms += s.end - s.start
       g.last = Math.max(g.last, s.end)
       if (starts.has(s.id)) g.plays++
@@ -1669,11 +1671,10 @@ export class Service {
     let changed = 0
     transaction(this.db, () => {
       for (const r of groups.values()) {
-        // Half a minute of an album is enough to put it on the shelf.
+        // Half a minute of a track is enough to put it on the shelf.
         if (r.ms < 30_000) continue
-        const artist = String(r.artist)
-        const album = String(r.album)
-        const externalId = `music:${artist.toLowerCase()}|${album.toLowerCase()}`.slice(0, 500)
+        // "track:" — v8 replaced the album cards ("music:artist|album") with tracks.
+        const externalId = `track:${r.artist.toLowerCase()}|${r.title.toLowerCase()}`.slice(0, 500)
         const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [externalId])
         if (!item) {
           this.db.run(
@@ -1681,8 +1682,8 @@ export class Service {
                created_at, updated_at, started_at)
              VALUES ('music', ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
             [
-              album || artist, album ? artist : '', r.last >= stale ? 'active' : 'on_hold', r.plays,
-              album ? (ru ? 'Альбом' : 'Album') : ru ? 'Исполнитель' : 'Artist', externalId, now, now, now
+              r.title, r.artist, r.last >= stale ? 'active' : 'on_hold', r.plays,
+              r.album || (ru ? 'Трек' : 'Track'), externalId, now, now, now
             ]
           )
           changed++

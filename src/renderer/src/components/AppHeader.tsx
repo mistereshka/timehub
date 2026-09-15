@@ -14,7 +14,6 @@ import { useI18n, type MessageKey } from '../i18n'
 import { isTypingTarget } from '../utils'
 import { AppIcon, HoverCard } from './common'
 import { GameCard, MusicCard } from './PresenceCards'
-import logo from '../assets/logo.png'
 import { Equalizer } from './Visualizer'
 
 export function AppHeader(): ReactNode {
@@ -42,10 +41,6 @@ export function AppHeader(): ReactNode {
 
   return (
     <header className="app-header">
-      <Link to="/" className="app-logo">
-        <img className="app-logo-img" src={logo} alt="" width={32} height={32} draggable={false} />
-        timehub
-      </Link>
       <form
         className="app-search no-drag"
         onSubmit={(e) => {
