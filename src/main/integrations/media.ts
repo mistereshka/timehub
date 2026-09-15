@@ -169,8 +169,9 @@ export class MediaConnector implements Connector {
     const missing = env.service
       .listLibrary({ kind: 'music' })
       .filter((i) => !i.coverUrl && i.source === 'tracker' && !this.coverTried.has(i.id))
-    // iTunes allows ~20 lookups a minute; the rest waits for the next sync.
-    for (const item of missing.slice(0, 15)) {
+    // iTunes allows ~20 requests a minute and a lookup takes up to two (world, then RU store): one item
+    // every 6 s stays under it. The rest waits for the next sync.
+    for (const item of missing.slice(0, 60)) {
       this.coverTried.add(item.id)
       try {
         // tracks are looked up as songs; album cards from before v8 as albums
@@ -181,7 +182,7 @@ export class MediaConnector implements Connector {
       } catch {
         // retried after the next launch
       }
-      await new Promise((r) => setTimeout(r, 3000))
+      await new Promise((r) => setTimeout(r, 6000))
     }
   }
 
