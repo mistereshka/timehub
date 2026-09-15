@@ -7,6 +7,7 @@ import { currentStreak, longestStreak } from './streak'
 import { editorProject, isCodeEditor } from './projects'
 import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, prettifyExeName } from './catalog'
 import { detectSite, isBrowserExe } from './sites'
+import { parseChat } from './social'
 
 export interface ServiceOptions {
   now?: () => number
@@ -249,6 +250,18 @@ const toLibrary = (r: Row): T.LibraryItem => ({
   notes: r.notes, year: r.year ?? null, format: r.format, source: r.source, externalId: r.external_id ?? null, url: r.url ?? null,
   appId: r.app_id ?? null, statusAuto: bool(r.status_auto), createdAt: r.created_at, updatedAt: r.updated_at,
   startedAt: r.started_at ?? null, finishedAt: r.finished_at ?? null, trackedMs: r.tracked_ms ?? 0, lastActivityAt: r.last_activity ?? null
+})
+
+const CALL_SELECT = `SELECT c.*, a.icon AS icon, a.display_name AS display_name FROM calls c LEFT JOIN apps a ON a.id = c.app_id`
+
+const toCall = (r: Row): T.CallInfo => ({
+  id: r.id as T.ID,
+  appId: (r.app_id as T.ID | null) ?? null,
+  app: String(r.display_name ?? r.app_name),
+  icon: (r.icon as string | null) ?? null,
+  context: String(r.context ?? ''),
+  start: Number(r.start_ms),
+  end: Number(r.end_ms)
 })
 
 const LIBRARY_SELECT = `SELECT l.*,
@@ -1698,6 +1711,117 @@ export class Service {
     ])
     this.refreshMusicInLibrary()
     this.notify('music')
+  }
+
+  // ------------------------------------------------------------------ social
+
+  /** A call seen through Windows' microphone records; `end` grows while it lasts. */
+  upsertCall(c: { exePath: string; app: string; start: number; end: number }): T.CallInfo {
+    const existing = this.db.get('SELECT id, end_ms FROM calls WHERE exe_path = ? AND start_ms = ?', [c.exePath, c.start])
+    if (existing) {
+      if (c.end > Number(existing.end_ms)) {
+        this.db.run('UPDATE calls SET end_ms = ? WHERE id = ?', [c.end, existing.id])
+        this.notify('social')
+      }
+      return toCall(this.db.get(`${CALL_SELECT} WHERE c.id = ?`, [existing.id])!)
+    }
+    const app = this.db.get('SELECT id, exe_name FROM apps WHERE lower(exe_path) = lower(?)', [c.exePath])
+    // Who it was with: the chat or channel open around the start of the call.
+    let context = ''
+    if (app) {
+      const s = this.db.get(
+        'SELECT title FROM activity_sessions WHERE app_id = ? AND end_ms >= ? AND start_ms <= ? ORDER BY end_ms DESC LIMIT 1',
+        [app.id, c.start - 10 * MINUTE, c.end]
+      )
+      const chat = s ? parseChat(String(app.exe_name), String(s.title)) : null
+      if (chat) context = chat.detail ? `${chat.name} · ${chat.detail}` : chat.name
+    }
+    const { lastId } = this.db.run('INSERT INTO calls (app_id, app_name, exe_path, context, start_ms, end_ms) VALUES (?, ?, ?, ?, ?, ?)', [
+      app?.id ?? null, c.app, c.exePath, context, c.start, c.end
+    ])
+    this.notify('social')
+    return toCall(this.db.get(`${CALL_SELECT} WHERE c.id = ?`, [lastId])!)
+  }
+
+  listCalls(from: number, to: number): T.CallInfo[] {
+    return this.db.all(`${CALL_SELECT} WHERE c.end_ms > ? AND c.start_ms < ? ORDER BY c.start_ms DESC`, [from, to]).map(toCall)
+  }
+
+  /** Messaging, conversations and calls — the Social tab. */
+  getSocial(from: number, to: number): T.SocialSummary {
+    const socialId = this.db.get(`SELECT id FROM categories WHERE key = 'social'`)?.id as T.ID | undefined
+    const apps = new Map(this.listApps().map((a) => [a.id, a]))
+    const isSocial = (app: T.AppInfo | undefined, categoryId: T.ID): boolean =>
+      socialId != null && (categoryId === socialId || app?.categoryId === socialId)
+    const byApp = new Map<T.ID, { ms: number; calls: number; callMs: number }>()
+    const appEntry = (id: T.ID): { ms: number; calls: number; callMs: number } => {
+      let e = byApp.get(id)
+      if (!e) byApp.set(id, (e = { ms: 0, calls: 0, callMs: 0 }))
+      return e
+    }
+    const days = new Map<string, { messagingMs: number; callMs: number }>()
+    const dayEntry = (key: string): { messagingMs: number; callMs: number } => {
+      let d = days.get(key)
+      if (!d) days.set(key, (d = { messagingMs: 0, callMs: 0 }))
+      return d
+    }
+    const chats = new Map<string, T.SocialChat>()
+    let messagingMs = 0
+    for (const s of this.listSessions(from, to)) {
+      const app = apps.get(s.appId)
+      if (!app || !isSocial(app, s.categoryId)) continue
+      const ms = clipDuration(s.start, s.end, from, to)
+      if (ms <= 0) continue
+      messagingMs += ms
+      appEntry(app.id).ms += ms
+      dayEntry(dayKey(Math.max(s.start, from))).messagingMs += ms
+      const chat = parseChat(app.exeName, s.title)
+      if (!chat) continue
+      const key = `${app.id}|${chat.kind}|${chat.name.toLowerCase()}`
+      const c = chats.get(key) ?? {
+        appId: app.id, app: app.displayName, icon: app.icon, kind: chat.kind, name: chat.name, detail: chat.detail ?? null, ms: 0, last: 0
+      }
+      c.ms += ms
+      c.last = Math.max(c.last, s.end)
+      chats.set(key, c)
+    }
+    const calls = this.listCalls(from, to)
+    let callMs = 0
+    let longest = 0
+    for (const c of calls) {
+      const ms = clipDuration(c.start, c.end, from, to)
+      callMs += ms
+      longest = Math.max(longest, c.end - c.start)
+      if (c.appId != null) {
+        const e = appEntry(c.appId)
+        e.calls++
+        e.callMs += ms
+      }
+      dayEntry(dayKey(Math.max(c.start, from))).callMs += ms
+    }
+    // Streak: days in a row with 5+ minutes of messaging or any call.
+    const today = todayKey(this.now())
+    const since = startOfDayMs(addDays(today, -120))
+    const streakDays = new Map<string, number>()
+    for (const s of this.listSessions(since, this.now())) {
+      if (isSocial(apps.get(s.appId), s.categoryId)) bump(streakDays, dayKey(s.start), s.end - s.start)
+    }
+    for (const c of this.listCalls(since, this.now())) bump(streakDays, dayKey(c.start), Math.max(c.end - c.start, STREAK_MIN_MS))
+    const daily: T.SocialSummary['daily'] = []
+    for (let d = dayKey(from); d <= dayKey(to - 1); d = addDays(d, 1)) daily.push({ date: d, ...(days.get(d) ?? { messagingMs: 0, callMs: 0 }) })
+    return {
+      messagingMs,
+      callMs,
+      callCount: calls.length,
+      longestCallMs: longest,
+      streak: currentStreak(this.streakDays(streakDays), today),
+      byApp: [...byApp]
+        .map(([appId, v]) => ({ appId, name: apps.get(appId)?.displayName ?? '?', icon: apps.get(appId)?.icon ?? null, ...v }))
+        .sort((a, b) => b.ms + b.callMs - (a.ms + a.callMs)),
+      chats: [...chats.values()].sort((a, b) => b.ms - a.ms).slice(0, 20),
+      calls: calls.slice(0, 50),
+      daily
+    }
   }
 
   /** All-time tracked time and last use per app (the Games tab). */

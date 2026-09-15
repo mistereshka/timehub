@@ -25,6 +25,7 @@ import { AppReportPage } from './pages/AppReportPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
 import { MusicPage } from './pages/MusicPage'
 import { GamesPage } from './pages/GamesPage'
+import { SocialPage } from './pages/SocialPage'
 import { MusicPlayerProvider, PlayerBar } from './components/MusicPlayer'
 
 export function App(): ReactNode {
@@ -108,6 +109,7 @@ function Shell(): ReactNode {
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/music" element={<MusicPage />} />
           <Route path="/games" element={<GamesPage />} />
+          <Route path="/social" element={<SocialPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

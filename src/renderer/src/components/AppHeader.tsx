@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, TextInput, UnderlineNav } from '@primer/react'
 import {
-  BookIcon, CalendarIcon, ClockIcon, GearIcon, GoalIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlugIcon, PlusIcon, SearchIcon,
+  BookIcon, CalendarIcon, ClockIcon, CommentDiscussionIcon, GearIcon, GoalIcon, GraphIcon, HomeIcon, IssueOpenedIcon, PlugIcon, PlusIcon, SearchIcon,
   PlayIcon, RocketIcon, SquareFillIcon, SunIcon, UnmuteIcon
 } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router'
@@ -126,8 +126,19 @@ function PresencePills(): ReactNode {
 
   const game = settings.trackingPaused ? undefined : tracker.games[0]
   const media = tracker.media?.playing ? tracker.media : null
+  const call = tracker.call
   return (
     <>
+      {call && (
+        <button type="button" className="pill pill-call" onClick={() => navigate('/social')} title={call.context || call.app}>
+          <span aria-hidden="true">📞</span>
+          <span className="truncate">
+            {t('social.inCall', { app: call.app })}
+            {call.context ? ` · ${call.context}` : ''}
+          </span>
+          <span className="muted">{duration(now - call.since)}</span>
+        </button>
+      )}
       {media && (
         <HoverCard
           anchor={
@@ -189,6 +200,7 @@ const NAV: { to: string; label: MessageKey; icon: typeof HomeIcon; exact?: boole
   { to: '/library', label: 'nav.library', icon: BookIcon },
   { to: '/music', label: 'nav.music', icon: UnmuteIcon },
   { to: '/games', label: 'nav.games', icon: RocketIcon },
+  { to: '/social', label: 'nav.social', icon: CommentDiscussionIcon },
   { to: '/schedule', label: 'nav.schedule', icon: ClockIcon },
   { to: '/activity', label: 'nav.activity', icon: GraphIcon },
   { to: '/connections', label: 'nav.connections', icon: PlugIcon },

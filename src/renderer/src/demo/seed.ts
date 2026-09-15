@@ -54,8 +54,8 @@ const TITLES: Record<Lang, Record<AppKey | 'youtube', string[]>> = {
     code: ['service.ts — timehub', 'TodayPage.tsx — timehub', 'tracker.ts — timehub', 'README.md — timehub', 'schedule.test.ts — timehub'],
     chrome: ['mistereshka/timehub · GitHub', 'Primer design system', 'Stack Overflow — React state', 'Gmail — Inbox', 'MDN Web Docs'],
     youtube: ['Lofi hip hop radio - YouTube', 'Fireship: 100 seconds of Rust - YouTube', 'Twitch — speedrun'],
-    telegram: ['Telegram'],
-    discord: ['#general — Friends', 'Voice — Gaming night'],
+    telegram: ['Mom – (demo)', 'timehub team – (demo)', 'Telegram'],
+    discord: ['@alex - Discord', '#general | Friends - Discord', '#voice | Friends - Discord'],
     terminal: ['npm run dev', 'PowerShell'],
     figma: ['timehub — UI kit'],
     obsidian: ['Journal — Obsidian', 'Reading notes — Obsidian'],
@@ -67,8 +67,8 @@ const TITLES: Record<Lang, Record<AppKey | 'youtube', string[]>> = {
     code: ['service.ts — timehub', 'TodayPage.tsx — timehub', 'tracker.ts — timehub', 'README.md — timehub', 'schedule.test.ts — timehub'],
     chrome: ['mistereshka/timehub · GitHub', 'Primer design system', 'Stack Overflow на русском', 'Gmail — Входящие', 'Хабр'],
     youtube: ['Lofi hip hop radio - YouTube', 'Разбор алгоритмов - YouTube', 'Twitch — спидран'],
-    telegram: ['Telegram'],
-    discord: ['#общий — Друзья', 'Голосовой — игровой вечер'],
+    telegram: ['Мама – (demo)', 'Команда timehub – (demo)', 'Telegram'],
+    discord: ['@alex - Discord', '#общий | Друзья - Discord', '#голосовой | Друзья - Discord'],
     terminal: ['npm run dev', 'PowerShell'],
     figma: ['timehub — UI kit'],
     obsidian: ['Дневник — Obsidian', 'Конспекты — Obsidian'],
@@ -402,6 +402,18 @@ export function seedDemo(service: Service, lang: Lang, setNow: (t: number | null
     } else {
       if (rand() < 0.8) fill(day + 11 * HOUR + j(60), day + 14 * HOUR, WEEKEND_MIX)
       if (rand() < 0.75) fill(day + 16 * HOUR + j(120), day + 21 * HOUR + j(120), EVENING_MIX)
+    }
+  }
+
+  // Calls (Windows notes when a messenger holds the microphone)
+  for (let d = 20; d >= 1; d--) {
+    if (rand() < 0.45) {
+      const start = at(d, 21) + Math.round(rand() * 60 * MINUTE)
+      service.upsertCall({ exePath: APPS.discord.path, app: 'Discord', start, end: start + Math.round((20 + rand() * 90) * MINUTE) })
+    }
+    if (rand() < 0.3) {
+      const start = at(d, 13.5) + Math.round(rand() * 30 * MINUTE)
+      service.upsertCall({ exePath: APPS.telegram.path, app: 'Telegram', start, end: start + Math.round((3 + rand() * 20) * MINUTE) })
     }
   }
 

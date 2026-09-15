@@ -25,6 +25,7 @@ import { NewDeafConnector, newDeafBase } from './integrations/newdeaf'
 import { DotaService } from './integrations/dota'
 import { MEDIA_SCHEME, MusicLibrary } from './music/library'
 import { GamesService } from './games'
+import { CallTracker } from './calls'
 import { PresenceService } from './integrations/presence'
 import { Reminders } from './reminders'
 import appIcon from '../../resources/icon.png?asset'
@@ -87,6 +88,9 @@ async function main(): Promise<void> {
   // Once: past browser time on known sites (YouTube…) moves from "Chrome" to those sites.
   service.splitBrowserSessionsBySite()
   const tracker = new Tracker(service, () => broadcast('tracker'))
+  // Calls in Telegram, Discord…: a messenger holding the microphone.
+  const calls = new CallTracker(service, () => tracker.runningPaths(), () => broadcast('tracker'))
+  every(15_000, () => void calls.poll(), true)
 
   // Connections (Steam, Roblox, music, Spotify, GitHub, calendars, Discord, AniLib…)
   const connections = new Connections(service, broadcast)
@@ -129,7 +133,8 @@ async function main(): Promise<void> {
     return {
       ...s,
       games: presence.decorate(s.games, tracker.getRunningGames()),
-      media: connections.isEnabled('media') ? media.presence : null
+      media: connections.isEnabled('media') ? media.presence : null,
+      call: calls.current
     }
   }
 

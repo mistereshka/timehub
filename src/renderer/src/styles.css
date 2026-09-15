@@ -1976,6 +1976,36 @@ body {
   font-weight: 600;
 }
 
+/* ----------------------------------------------------------------- social */
+
+.pill-call {
+  border-color: var(--borderColor-success-emphasis, var(--borderColor-default));
+  background: var(--bgColor-success-muted);
+}
+.call-live {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-color: var(--borderColor-success-emphasis, var(--borderColor-default));
+  background: var(--bgColor-success-muted);
+}
+.call-live-icon {
+  font-size: 28px;
+}
+.call-live-time {
+  font-size: 22px;
+  font-weight: 600;
+}
+.social-kind {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--borderColor-default);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--fgColor-muted);
+}
+
 /* ------------------------------------------------------------------ games */
 
 .games-grid {

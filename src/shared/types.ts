@@ -452,6 +452,42 @@ export interface TrackerStatus {
   current: { appId: ID; displayName: string; icon: string | null; title: string; since: number } | null
   games: GamePresence[]
   media: MediaPresence | null
+  /** A messenger holding the microphone right now */
+  call?: { app: string; icon: string | null; since: number; context: string } | null
+}
+
+/** A call seen through Windows' microphone records. */
+export interface CallInfo {
+  id: ID
+  appId: ID | null
+  app: string
+  icon: string | null
+  /** The chat or channel open around the start of the call */
+  context: string
+  start: number
+  end: number
+}
+export interface SocialChat {
+  appId: ID
+  app: string
+  icon: string | null
+  kind: 'dm' | 'channel' | 'chat'
+  name: string
+  detail: string | null
+  ms: number
+  last: number
+}
+export interface SocialSummary {
+  messagingMs: number
+  callMs: number
+  callCount: number
+  longestCallMs: number
+  /** Days in a row with 5+ minutes of messaging or a call */
+  streak: number
+  byApp: { appId: ID; name: string; icon: string | null; ms: number; calls: number; callMs: number }[]
+  chats: SocialChat[]
+  calls: CallInfo[]
+  daily: { date: string; messagingMs: number; callMs: number }[]
 }
 
 /** A file in the local music library. */
@@ -689,6 +725,7 @@ export interface AppMeta {
 }
 
 export type ChangeTopic =
+  | 'social'
   | 'settings'
   | 'tasks'
   | 'time'

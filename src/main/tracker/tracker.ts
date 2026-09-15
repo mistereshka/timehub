@@ -28,6 +28,7 @@ export class Tracker {
   private readonly iconRequested = new Set<ID>()
   private readonly gamesSince = new Map<string, number>()
   private running: RunningGame[] = []
+  private processPaths = new Set<string>()
 
   constructor(
     private readonly service: Service,
@@ -76,6 +77,11 @@ export class Tracker {
 
   getStatus(): TrackerStatus {
     return this.status
+  }
+
+  /** Executables running right now (lower-case paths, refreshed every minute). */
+  runningPaths(): Set<string> {
+    return this.processPaths
   }
 
   /** Games that are open right now, with their executables (for store lookups). */
@@ -170,6 +176,7 @@ export class Tracker {
     try {
       processes = w.listProcesses()
       visible = w.visibleWindowPids()
+      this.processPaths = new Set(processes.map((p) => p.path.toLowerCase()))
     } catch (err) {
       console.error('Process scan failed:', err)
       return

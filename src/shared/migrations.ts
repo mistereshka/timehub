@@ -281,6 +281,20 @@ export const MIGRATIONS: string[] = [
   // v6: Telegram voice and video messages aren't music either (see mediaKind).
   `
   UPDATE media_sessions SET kind = 'video' WHERE album = '' AND lower(source) LIKE '%telegram%';
+  `,
+  // v7: calls in messengers (seen through Windows' microphone records).
+  `
+  CREATE TABLE calls (
+    id INTEGER PRIMARY KEY,
+    app_id INTEGER REFERENCES apps(id) ON DELETE SET NULL,
+    app_name TEXT NOT NULL,
+    exe_path TEXT NOT NULL,
+    context TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX calls_source ON calls(exe_path, start_ms);
+  CREATE INDEX calls_start ON calls(start_ms);
   `
 ]
 
