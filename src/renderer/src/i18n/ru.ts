@@ -506,6 +506,8 @@ export const ru: Record<MessageKey, string> = {
   'lib.new': '+{n} новый|+{n} новых|+{n} новых',
   'lib.playedTime': '{time} в игре',
   'lib.plusOne': 'Плюс один',
+  'lib.albumTracks': 'Треки альбома',
+  'lib.showTracks': 'Треки',
   'lib.source.manual': 'добавлено вручную',
   'lib.edit': 'Изменить',
   'lib.newItem': 'Добавить в библиотеку',

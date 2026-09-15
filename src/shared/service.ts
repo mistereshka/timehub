@@ -8,6 +8,7 @@ import { editorProject, isCodeEditor } from './projects'
 import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, prettifyExeName } from './catalog'
 import { detectSite, isBrowserExe } from './sites'
 import { parseChat } from './social'
+import { albumKey, primaryArtist } from './media'
 
 export interface ServiceOptions {
   now?: () => number
@@ -100,6 +101,15 @@ function listenStarts(rows: { id: T.ID; title: string; artist: string; start: nu
   return starts
 }
 const MAX_TITLE_LENGTH = 300
+/** Half a minute of a track is enough to put it on the music shelf. */
+const SHELF_MIN_MS = 30_000
+
+/** "Альбом · 3 трека" / "Album · 3 tracks" — the format line of an album on the shelf. */
+function albumFormat(n: number, ru: boolean): string {
+  if (!ru) return `Album · ${n} ${n === 1 ? 'track' : 'tracks'}`
+  const form = new Intl.PluralRules('ru').select(n)
+  return `Альбом · ${n} ${form === 'one' ? 'трек' : form === 'few' ? 'трека' : 'треков'}`
+}
 /** A day counts toward an app/game streak after this much use. */
 const STREAK_MIN_MS = 5 * MINUTE
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -1636,17 +1646,9 @@ export class Service {
     return changed
   }
 
-  /**
-   * Tracks you listen to become music items — the track as the title, the artist
-   * below it and the album as the format: played in the last two weeks →
-   * "listening", untouched for a month → "on hold". Progress is the number of plays.
-   */
-  refreshMusicInLibrary(): number {
-    const now = this.now()
-    const recent = now - 14 * DAY
-    const stale = now - 30 * DAY
-    const ru = this.getSettings().language === 'ru'
-    const sessions = this.db
+  /** Music sessions for the shelf, oldest first. */
+  private musicSessions(): { id: T.ID; title: string; artist: string; album: string; start: number; end: number }[] {
+    return this.db
       .all(`SELECT id, title, artist, album, start_ms, end_ms FROM media_sessions WHERE kind = 'music' AND artist <> '' ORDER BY start_ms`)
       .map((r) => ({
         id: r.id as T.ID,
@@ -1656,35 +1658,70 @@ export class Service {
         start: Number(r.start_ms),
         end: Number(r.end_ms)
       }))
+  }
+
+  /**
+   * Music you listen to goes on the shelf. Two or more tracks of one album make an album card
+   * ("Альбом · 3 трека", the artist below it); any other track gets a card of its own with the
+   * album as the format. Played in the last two weeks → "listening", untouched for a month →
+   * "on hold". Progress is the number of plays.
+   */
+  refreshMusicInLibrary(): number {
+    const now = this.now()
+    const recent = now - 14 * DAY
+    const stale = now - 30 * DAY
+    const ru = this.getSettings().language === 'ru'
+    const sessions = this.musicSessions()
     const starts = listenStarts(sessions)
-    const groups = new Map<string, { title: string; artist: string; album: string; plays: number; ms: number; last: number }>()
+    type Track = { title: string; artist: string; album: string; plays: number; ms: number; last: number }
+    const tracks = new Map<string, Track>()
     for (const s of sessions) {
       if (!s.title.trim()) continue
       const key = `${s.artist.toLowerCase()}|${s.title.toLowerCase()}`
-      const g = groups.get(key) ?? { title: s.title, artist: s.artist, album: s.album, plays: 0, ms: 0, last: 0 }
+      const g = tracks.get(key) ?? { title: s.title, artist: s.artist, album: s.album, plays: 0, ms: 0, last: 0 }
       if (s.album) g.album = s.album
       g.ms += s.end - s.start
       g.last = Math.max(g.last, s.end)
       if (starts.has(s.id)) g.plays++
-      groups.set(key, g)
+      tracks.set(key, g)
+    }
+    // "track:" / "album:" — v8 replaced the old album cards ("music:artist|album").
+    const trackId = (g: Track): string => `track:${g.artist.toLowerCase()}|${g.title.toLowerCase()}`.slice(0, 500)
+    const heard = [...tracks.values()].filter((g) => g.ms >= SHELF_MIN_MS)
+    const albums = new Map<string, Track[]>()
+    for (const g of heard) {
+      if (!g.album) continue
+      const key = albumKey(g.artist, g.album)
+      albums.set(key, [...(albums.get(key) ?? []), g])
+    }
+    const shelf: { externalId: string; title: string; artist: string; format: string; plays: number; last: number }[] = []
+    const joined = new Set<string>()
+    for (const [key, list] of albums) {
+      if (list.length < 2) continue
+      shelf.push({
+        externalId: `album:${key}`.slice(0, 500),
+        title: list[0].album,
+        artist: primaryArtist(list[0].artist),
+        format: albumFormat(list.length, ru),
+        plays: list.reduce((sum, g) => sum + g.plays, 0),
+        last: Math.max(...list.map((g) => g.last))
+      })
+      for (const g of list) joined.add(trackId(g))
+    }
+    for (const g of heard) {
+      if (joined.has(trackId(g))) continue
+      shelf.push({ externalId: trackId(g), title: g.title, artist: g.artist, format: g.album || (ru ? 'Трек' : 'Track'), plays: g.plays, last: g.last })
     }
     let changed = 0
     transaction(this.db, () => {
-      for (const r of groups.values()) {
-        // Half a minute of a track is enough to put it on the shelf.
-        if (r.ms < 30_000) continue
-        // "track:" — v8 replaced the album cards ("music:artist|album") with tracks.
-        const externalId = `track:${r.artist.toLowerCase()}|${r.title.toLowerCase()}`.slice(0, 500)
-        const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [externalId])
+      for (const r of shelf) {
+        const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [r.externalId])
         if (!item) {
           this.db.run(
             `INSERT INTO library_items (kind, title, original_title, status, progress, format, source, external_id, status_auto,
                created_at, updated_at, started_at)
              VALUES ('music', ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
-            [
-              r.title, r.artist, r.last >= stale ? 'active' : 'on_hold', r.plays,
-              r.album || (ru ? 'Трек' : 'Track'), externalId, now, now, now
-            ]
+            [r.title, r.artist, r.last >= stale ? 'active' : 'on_hold', r.plays, r.format, r.externalId, now, now, now]
           )
           changed++
           continue
@@ -1694,14 +1731,46 @@ export class Service {
           if (r.last >= recent && ['planned', 'on_hold', 'dropped'].includes(status)) status = 'active'
           else if (r.last < stale && status === 'active') status = 'on_hold'
         }
-        if (status !== item.status || Number(item.progress) !== r.plays) {
-          this.db.run('UPDATE library_items SET status = ?, progress = ?, updated_at = ? WHERE id = ?', [status, r.plays, now, item.id])
+        if (status !== item.status || Number(item.progress) !== r.plays || item.format !== r.format) {
+          this.db.run('UPDATE library_items SET status = ?, progress = ?, format = ?, updated_at = ? WHERE id = ?', [
+            status, r.plays, r.format, now, item.id
+          ])
           changed++
         }
+      }
+      // A track that joined its album leaves its own card — unless you changed that card yourself.
+      for (const externalId of joined) {
+        const own = this.db.get(
+          `SELECT id FROM library_items WHERE source = 'tracker' AND external_id = ?
+             AND status_auto = 1 AND favorite = 0 AND rating IS NULL AND notes = ''`,
+          [externalId]
+        )
+        if (!own) continue
+        this.db.run('DELETE FROM library_items WHERE id = ?', [own.id])
+        changed++
       }
     })
     if (changed) this.notify('library')
     return changed
+  }
+
+  /** The tracks heard from an album card on the shelf, most played first. */
+  getAlbumTracks(id: T.ID): T.AlbumTrack[] {
+    const externalId = String(this.db.get('SELECT external_id FROM library_items WHERE id = ?', [id])?.external_id ?? '')
+    if (!externalId.startsWith('album:')) return []
+    // lower() in SQLite only knows ASCII, so Cyrillic albums are matched here.
+    const rows = this.musicSessions().filter((s) => s.album && `album:${albumKey(s.artist, s.album)}`.slice(0, 500) === externalId)
+    const starts = listenStarts(rows)
+    const tracks = new Map<string, T.AlbumTrack>()
+    for (const r of rows) {
+      const key = r.title.toLowerCase()
+      const tr = tracks.get(key) ?? { title: r.title, artist: r.artist, plays: 0, ms: 0, lastAt: 0 }
+      tr.ms += r.end - r.start
+      tr.lastAt = Math.max(tr.lastAt, r.end)
+      if (starts.has(r.id)) tr.plays++
+      tracks.set(key, tr)
+    }
+    return [...tracks.values()].sort((a, b) => b.plays - a.plays || b.ms - a.ms)
   }
 
   /** A track heard in timehub's own player (the renderer reports it when it ends or changes). */

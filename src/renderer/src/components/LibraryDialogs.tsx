@@ -4,7 +4,7 @@ import { CheckIcon, GraphIcon, LinkExternalIcon, SearchIcon } from '@primer/octi
 import { Link, useNavigate } from 'react-router'
 import type { LibraryInput, LibraryItem, LibraryKind, LibrarySearchResult, LibraryStatus } from '@shared/types'
 import { api, errorMessage } from '../api'
-import { useAction } from '../hooks'
+import { useAction, useQuery } from '../hooks'
 import { useI18n, type MessageKey } from '../i18n'
 import { libraryStatusLabel, libraryUnit } from '../utils'
 import { Cover, ErrorFlash, Field } from './common'
@@ -20,6 +20,29 @@ const SOURCE_NAMES: Record<string, string> = {
   battlenet: 'Battle.net', newdeaf: 'NewDeaf'
 }
 export const sourceName = (source: string, t: (k: MessageKey) => string): string => SOURCE_NAMES[source] ?? t('lib.source.manual')
+
+/** An album card the tracker made from two or more tracks of one album. */
+export const isAlbum = (item: LibraryItem): boolean => item.kind === 'music' && !!item.externalId?.startsWith('album:')
+
+/** The tracks heard from an album card, most played first. */
+export function AlbumTracks({ itemId }: { itemId: LibraryItem['id'] }): ReactNode {
+  const { t, duration } = useI18n()
+  const tracks = useQuery(() => api.getAlbumTracks(itemId), [itemId], ['library', 'activity']).data ?? []
+  const unit = t('lib.unit.music')
+  return (
+    <div className="album-tracks">
+      {tracks.map((tr, i) => (
+        <div key={tr.title} className="album-track">
+          <span className="album-track-num">{i + 1}</span>
+          <span className="grow truncate">{tr.title}</span>
+          <span className="muted nowrap">
+            {t('lib.progressOpen', { n: tr.plays, unit })} · {duration(tr.ms)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function LibraryItemDialog({ item, kind, onClose }: { item: LibraryItem | null; kind?: LibraryKind; onClose(): void }): ReactNode {
   const { t, duration } = useI18n()
@@ -95,6 +118,11 @@ export function LibraryItemDialog({ item, kind, onClose }: { item: LibraryItem |
             )}
           </div>
         </div>
+        {item && isAlbum(item) && (
+          <Field label={t('lib.albumTracks')}>
+            <AlbumTracks itemId={item.id} />
+          </Field>
+        )}
         <div className="form-grid three">
           <Field label={t('lib.field.kind')}>
             <Select block value={form.kind} onChange={(e) => set('kind', e.target.value as LibraryKind)}>

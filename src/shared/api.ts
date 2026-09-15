@@ -22,7 +22,7 @@ export const SERVICE_METHODS = [
   'listSessions', 'getUsage', 'getDailyActive', 'getMonthlyActive', 'getHeatmap', 'getFeed',
   'listRules', 'saveRule', 'deleteRule', 'reapplyRules',
   'getMusic', 'logPlayback', 'listCalendarEvents', 'getExternalDays', 'getSocial', 'listCalls',
-  'listLibrary', 'getLibraryItem', 'saveLibraryItem', 'bumpLibraryProgress', 'deleteLibraryItem'
+  'listLibrary', 'getLibraryItem', 'saveLibraryItem', 'bumpLibraryProgress', 'deleteLibraryItem', 'getAlbumTracks'
 ] as const satisfies readonly (keyof Service)[]
 export type ServiceMethod = (typeof SERVICE_METHODS)[number]
 

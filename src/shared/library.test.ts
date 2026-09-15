@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { openNodeDb } from '../main/db'
-import { mediaKind } from './media'
+import { mediaKind, primaryArtist } from './media'
 import { Service } from './service'
 import { DAY, MINUTE } from './time'
 
@@ -71,6 +71,29 @@ describe('library', () => {
     expect(mediaKind({ source: 'Telegram.TelegramDesktop', artist: 'Friend', album: '' })).toBe('video')
   })
 
+  it('finds the main artist of a track', () => {
+    expect(primaryArtist('Сплин, Гость')).toBe('Сплин')
+    expect(primaryArtist('Daft Punk feat. Pharrell Williams')).toBe('Daft Punk')
+    expect(primaryArtist('Simon & Garfunkel')).toBe('Simon & Garfunkel')
+  })
+
+  it('groups the tracks of one album into it', () => {
+    const { svc, clock } = setup()
+    const t = clock.now - 60 * MINUTE
+    svc.seedMedia('Chrome', 'Орбит без сахара', 'Сплин', 'Гранатовый альбом', t, t + 3 * MINUTE)
+    svc.seedMedia('Chrome', 'Одиночка', 'Кто-то', 'Одиночка', t + 4 * MINUTE, t + 7 * MINUTE)
+    expect(svc.refreshMusicInLibrary()).toBe(2)
+    svc.seedMedia('Chrome', 'Выхода нет', 'Сплин, Гость', 'Гранатовый альбом', t + 8 * MINUTE, t + 12 * MINUTE)
+    // the album card comes in and the track heard before joins it
+    expect(svc.refreshMusicInLibrary()).toBe(2)
+    const shelf = svc.listLibrary({ kind: 'music' })
+    expect(shelf.map((i) => i.title).sort()).toEqual(['Гранатовый альбом', 'Одиночка'])
+    const album = shelf.find((i) => i.title === 'Гранатовый альбом')!
+    expect(album).toMatchObject({ originalTitle: 'Сплин', format: 'Альбом · 2 трека', progress: 2 })
+    expect(svc.getAlbumTracks(album.id).map((x) => x.title).sort()).toEqual(['Выхода нет', 'Орбит без сахара'])
+    expect(svc.refreshMusicInLibrary()).toBe(0)
+  })
+
   it('counts a track cut by pauses as one play and shelves the track right away', () => {
     const { svc, clock } = setup()
     const t = clock.now - 10 * MINUTE
@@ -114,15 +137,15 @@ describe('library', () => {
     expect(music.plays).toBe(3)
     expect(music.topArtists.map((a) => a.name)).toEqual(['Daft Punk'])
 
-    expect(svc.refreshMusicInLibrary()).toBe(3)
-    const shelf = svc.listLibrary({ kind: 'music' })
-    expect(shelf.map((i) => i.title).sort()).toEqual(['Track 0', 'Track 1', 'Track 2'])
-    const track = shelf.find((i) => i.title === 'Track 0')!
-    expect(track).toMatchObject({ originalTitle: 'Daft Punk', format: 'Discovery', status: 'active', progress: 1, source: 'tracker' })
+    expect(svc.refreshMusicInLibrary()).toBe(1)
+    const [album] = svc.listLibrary({ kind: 'music' })
+    expect(album).toMatchObject({
+      title: 'Discovery', originalTitle: 'Daft Punk', format: 'Альбом · 3 трека', status: 'active', progress: 3, source: 'tracker'
+    })
     expect(svc.refreshMusicInLibrary()).toBe(0)
     clock.now += 31 * DAY
     svc.refreshMusicInLibrary()
-    expect(svc.getLibraryItem(track.id)!.status).toBe('on_hold')
+    expect(svc.getLibraryItem(album.id)!.status).toBe('on_hold')
   })
 
   it('forgets its own app together with the history', () => {

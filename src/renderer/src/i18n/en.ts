@@ -504,6 +504,8 @@ export const en = {
   'lib.new': '+{n} new|+{n} new',
   'lib.playedTime': '{time} played',
   'lib.plusOne': 'Plus one',
+  'lib.albumTracks': 'Album tracks',
+  'lib.showTracks': 'Tracks',
   'lib.source.manual': 'added by hand',
   'lib.edit': 'Edit',
   'lib.newItem': 'Add to library',

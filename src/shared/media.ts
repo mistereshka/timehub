@@ -20,3 +20,16 @@ export function mediaKind(m: { source: string; artist: string; album: string }):
   if (m.album.trim()) return 'music'
   return / - topic$/i.test(m.artist.trim()) ? 'music' : 'video'
 }
+
+/**
+ * "Artist, Guest" or "Artist feat. Guest" → "Artist": the album belongs to the first name.
+ * "&" is left alone — too many bands have it in their name.
+ */
+export function primaryArtist(artist: string): string {
+  return artist.split(/\s*(?:,|;|\s(?:feat|ft)\.?\s)\s*/i)[0].trim() || artist.trim()
+}
+
+/** Tracks of one album by one (main) artist share this key. */
+export function albumKey(artist: string, album: string): string {
+  return `${primaryArtist(artist).toLowerCase()}|${album.trim().toLowerCase()}`
+}

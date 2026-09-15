@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { ActionList, ActionMenu, Button, IconButton, LinkButton, TextInput } from '@primer/react'
 import {
-  AppsIcon, HeartFillIcon, HeartIcon, ListUnorderedIcon, PlugIcon, PlusIcon, SearchIcon, SyncIcon, TriangleDownIcon
+  AppsIcon, ChevronDownIcon, ChevronRightIcon, HeartFillIcon, HeartIcon, ListUnorderedIcon, PlugIcon, PlusIcon, SearchIcon, SyncIcon,
+  TriangleDownIcon
 } from '@primer/octicons-react'
 import { useSearchParams } from 'react-router'
 import type { LibraryItem, LibraryKind, LibraryStatus } from '@shared/types'
@@ -10,7 +11,9 @@ import { useAction, useQuery } from '../hooks'
 import { useI18n, type MessageKey } from '../i18n'
 import { libraryStatusLabel, libraryUnit } from '../utils'
 import { Blankslate, Cover, ErrorFlash, MiniProgress } from '../components/common'
-import { KIND_EMOJI, LIBRARY_KINDS, LIBRARY_STATUSES, LibraryAddDialog, LibraryItemDialog, sourceName } from '../components/LibraryDialogs'
+import {
+  AlbumTracks, KIND_EMOJI, LIBRARY_KINDS, LIBRARY_STATUSES, LibraryAddDialog, LibraryItemDialog, isAlbum, sourceName
+} from '../components/LibraryDialogs'
 
 type SortKey = 'updated' | 'name' | 'rating' | 'progress'
 const SORTS: SortKey[] = ['updated', 'name', 'rating', 'progress']
@@ -287,6 +290,8 @@ function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): Re
   const { t, tn, ago } = useI18n()
   const fresh = freshCount(item)
   const unit = libraryUnit(item.kind, t, item.source)
+  const album = isAlbum(item)
+  const [open, setOpen] = useState(false)
   return (
     <div className="box-row hoverable lib-row">
       <button type="button" className="lib-cover-btn" onClick={onOpen}>
@@ -304,7 +309,14 @@ function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): Re
           {fresh > 0 && <span className="fg-success">{tn('lib.new', fresh)}</span>}
           {(item.format || item.year) && <span>{[item.format, item.year].filter(Boolean).join(' · ')}</span>}
           <span>{sourceName(item.source, t)}</span>
+          {album && (
+            <button type="button" className="album-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+              {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+              {t('lib.showTracks')}
+            </button>
+          )}
         </div>
+        {album && open && <AlbumTracks itemId={item.id} />}
         {item.total ? (
           <div className="lib-progress">
             <MiniProgress value={item.progress / item.total} />

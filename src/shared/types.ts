@@ -672,6 +672,14 @@ export interface LibraryItem {
   trackedMs: number
   lastActivityAt: number | null
 }
+/** A track heard from an album on the music shelf. */
+export interface AlbumTrack {
+  title: string
+  artist: string
+  plays: number
+  ms: number
+  lastAt: number
+}
 export interface LibraryInput {
   id?: ID
   kind: LibraryKind
