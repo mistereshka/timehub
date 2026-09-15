@@ -839,7 +839,7 @@ export class Service {
           `INSERT INTO goals (title, body, emoji, color, status, progress, auto_progress, target_date, created_at, updated_at)
            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)`,
           [
-            title, input.body ?? '', input.emoji || '🎯', input.color ?? '#1f883d', clampPercent(input.manualProgress ?? 0),
+            title, input.body ?? '', input.emoji || '🎯', input.color ?? '#8250df', clampPercent(input.manualProgress ?? 0),
             input.autoProgress === false ? 0 : 1, input.targetDate ?? null, now, now
           ]
         ).lastId

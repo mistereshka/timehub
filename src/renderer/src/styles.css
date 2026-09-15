@@ -12,6 +12,35 @@
   }
 }
 
+/* Brand colours: the violet of the music visuals instead of Primer's green. Success, "open" and
+   primary buttons turn violet, "done" turns pink so the two stay apart, the contribution graph goes
+   purple. light-dark() follows the color-scheme above, so one block covers every theme. Primer's
+   ThemeProvider repeats data-color-mode on its own wrapper, so that element is covered too. */
+html:root[data-color-mode],
+html:root [data-color-mode] {
+  --bgColor-success-emphasis: light-dark(#8250df, #8957e5);
+  --bgColor-success-muted: light-dark(#fbefff, #ab7df826);
+  --fgColor-success: light-dark(#8250df, #ab7df8);
+  --borderColor-success-emphasis: light-dark(#8250df, #8957e5);
+  --borderColor-success-muted: light-dark(#c297ff66, #ab7df866);
+  --button-primary-bgColor-rest: var(--bgColor-success-emphasis);
+  --button-primary-bgColor-hover: light-dark(#7445d3, #9466ea);
+  --button-primary-bgColor-active: light-dark(#6639ba, #a371f7);
+  --button-primary-bgColor-disabled: light-dark(#d8b9ff, #3c1e70);
+  --button-primary-borderColor-disabled: var(--button-primary-bgColor-disabled);
+  --fgColor-done: var(--fgColor-sponsors);
+  --bgColor-done-emphasis: var(--bgColor-sponsors-emphasis);
+  --bgColor-done-muted: var(--bgColor-sponsors-muted);
+  --borderColor-done-emphasis: var(--borderColor-sponsors-emphasis);
+  --borderColor-done-muted: var(--borderColor-sponsors-muted);
+  --contribution-default-bgColor-1: light-dark(#d8b9ff, #3c1e70);
+  --contribution-default-bgColor-2: light-dark(#a475f9, #6e40c9);
+  --contribution-default-bgColor-3: light-dark(#8250df, #a371f7);
+  --contribution-default-bgColor-4: light-dark(#512a97, #d2a8ff);
+  /* wins and losses keep their usual green and red */
+  --timehub-win: light-dark(#1a7f37, #3fb950);
+}
+
 html,
 body,
 #root {
@@ -139,6 +168,9 @@ a {
 }
 .fg-success {
   color: var(--fgColor-success);
+}
+.fg-win {
+  color: var(--timehub-win);
 }
 .fg-done {
   color: var(--fgColor-done);

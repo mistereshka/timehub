@@ -143,7 +143,7 @@ const GOALS: GoalSpec[] = [
   {
     title: { en: 'Ship timehub 1.0', ru: 'Выпустить timehub 1.0' },
     body: { en: 'Tracker, planning and reports good enough for daily use.', ru: 'Трекер, планирование и отчёты — чтобы пользоваться каждый день.' },
-    emoji: '🚀', color: '#1f883d', auto: true, targetIn: 30,
+    emoji: '🚀', color: '#8250df', auto: true, targetIn: 30,
     notes: [[4, { en: 'Goals and the library are working. Next: installer.', ru: 'Цели и библиотека работают. Дальше — установщик.' }, null]]
   },
   {
@@ -185,7 +185,7 @@ interface TaskSpec {
 }
 
 const PROJECTS = [
-  { name: { en: 'timehub', ru: 'timehub' }, color: '#1f883d', description: { en: 'This app', ru: 'Это приложение' } },
+  { name: { en: 'timehub', ru: 'timehub' }, color: '#db61a2', description: { en: 'This app', ru: 'Это приложение' } },
   { name: { en: 'Study', ru: 'Учёба' }, color: '#8250df', description: { en: 'University', ru: 'Университет' } },
   { name: { en: 'Home', ru: 'Дом' }, color: '#bf8700', description: { en: 'Chores and errands', ru: 'Быт и дела' } }
 ]

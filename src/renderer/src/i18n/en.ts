@@ -766,7 +766,7 @@ export const en = {
   'settings.palette.sunset': 'Sunset — purple to red',
   'settings.palette.purple': 'Purple',
   'settings.palette.red': 'Red',
-  'settings.palette.green': 'GitHub green',
+  'settings.palette.green': 'Green',
   'settings.visualizerHint':
     'An equalizer in the header, a pulsing cover and a spectrum in the player and on the Music tab. It listens to what the PC plays only to draw it — nothing is recorded or saved.'
 }

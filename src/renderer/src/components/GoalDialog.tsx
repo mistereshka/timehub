@@ -37,7 +37,7 @@ export function GoalDialog({ goal, onClose }: { goal: Goal | null; onClose(saved
   const { t, duration } = i18n
   const [title, setTitle] = useState(goal?.title ?? '')
   const [emoji, setEmoji] = useState(goal?.emoji ?? '🎯')
-  const [color, setColor] = useState(goal?.color ?? '#1f883d')
+  const [color, setColor] = useState(goal?.color ?? '#8250df')
   const [targetDate, setTargetDate] = useState(goal?.targetDate ?? '')
   const [body, setBody] = useState(goal?.body ?? '')
   const [autoProgress, setAutoProgress] = useState(goal?.autoProgress ?? true)

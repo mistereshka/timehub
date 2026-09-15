@@ -79,7 +79,7 @@ function DotaView({ stats: s, onAccount }: { stats: DotaStats; onAccount(id: str
         <div className="dota-stat">
           <span className="small muted">{t('dota.record')}</span>
           <span className="v">
-            <span className="fg-success">{s.wins}</span> – <span className="fg-danger">{s.losses}</span>
+            <span className="fg-win">{s.wins}</span> – <span className="fg-danger">{s.losses}</span>
           </span>
         </div>
         <div className="dota-stat">
@@ -121,7 +121,7 @@ function DotaView({ stats: s, onAccount }: { stats: DotaStats; onAccount(id: str
                   {m.ranked ? ` · ${t('dota.ranked')}` : ''} · {ago(m.startTime)}
                 </span>
               </span>
-              <span className={`dota-result ${m.win ? 'fg-success' : 'fg-danger'}`}>{m.win ? t('dota.win') : t('dota.loss')}</span>
+              <span className={`dota-result ${m.win ? 'fg-win' : 'fg-danger'}`}>{m.win ? t('dota.win') : t('dota.loss')}</span>
               <span className="mono small nowrap dota-kda">
                 {m.kills}/{m.deaths}/{m.assists}
               </span>

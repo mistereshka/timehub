@@ -1,12 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Minimal, Octicons-style: a flat dark tile, a white stopwatch outline and a green hand. -->
-  <rect x="64" y="64" width="896" height="896" rx="208" fill="#0d1117"/>
-  <rect x="68" y="68" width="888" height="888" rx="204" fill="none" stroke="#30363d" stroke-width="8"/>
-  <g fill="none" stroke="#f0f6fc" stroke-linecap="round" stroke-width="64">
-    <circle cx="512" cy="572" r="248"/>
-    <line x1="452" y1="222" x2="572" y2="222"/>
-    <line x1="738" y1="346" x2="782" y2="302"/>
+  <!-- A sunset tile in the colours of the music visuals with a white day-timeline mark:
+       three blocks of the day, one after another. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8957e5"/>
+      <stop offset="0.55" stop-color="#db61a2"/>
+      <stop offset="1" stop-color="#f85149"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="224" fill="url(#tile)"/>
+  <g fill="#ffffff">
+    <rect x="232" y="248" width="328" height="128" rx="64"/>
+    <rect x="348" y="448" width="328" height="128" rx="64"/>
+    <rect x="464" y="648" width="328" height="128" rx="64"/>
   </g>
-  <line x1="512" y1="572" x2="512" y2="430" stroke="#3fb950" stroke-width="64" stroke-linecap="round"/>
-  <circle cx="512" cy="572" r="44" fill="#3fb950"/>
 </svg>
