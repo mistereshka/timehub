@@ -738,7 +738,13 @@ export const en = {
   'games.last': 'last played {ago}',
   'games.report': 'Report',
   'games.emptyTitle': 'No games found',
-  'games.emptyText': 'Connect Steam, Epic or Battle.net — or just start a game, the tracker will remember it.'
+  'games.emptyText': 'Connect Steam, Epic or Battle.net — or just start a game, the tracker will remember it.',
+
+  'music.nowPlayingTitle': 'Now playing',
+  'settings.music': 'Music',
+  'settings.visualizer': 'Move with the music',
+  'settings.visualizerHint':
+    'An equalizer in the header, a pulsing cover and a spectrum in the player and on the Music tab. It listens to what the PC plays only to draw it — nothing is recorded or saved.'
 }
 
 export type MessageKey = keyof typeof en

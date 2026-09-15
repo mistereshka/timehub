@@ -10,6 +10,7 @@ import { useAction, useQuery } from '../hooks'
 import { useI18n } from '../i18n'
 import { Blankslate, Cover, ErrorFlash } from '../components/common'
 import { ICONS, PlayerButton, usePlayer } from '../components/MusicPlayer'
+import { RadialVisualizer } from '../components/Visualizer'
 
 const LIMIT = 500
 
@@ -22,10 +23,57 @@ function shuffled<T>(list: T[]): T[] {
   return a
 }
 
+/** What plays right now — timehub's own player or anything in Windows — with the big visual and controls. */
+function NowPlaying({ onControl }: { onControl(action: MediaAction): void }): ReactNode {
+  const { t } = useI18n()
+  const { tracker, settings } = useApp()
+  const player = usePlayer()
+  const own = player.current
+  const media = tracker.media
+  const item =
+    own && (player.playing || !media?.playing)
+      ? { title: own.title, artist: own.artist || t('music.unknownArtist'), cover: own.cover, source: 'timehub', playing: player.playing, own: true }
+      : media
+        ? { title: media.title, artist: media.artist, cover: media.thumbnail, source: media.sourceName, playing: media.playing, own: false }
+        : null
+  if (!item) {
+    return <div className="box box-body mb-3 small muted">{t('music.remoteEmpty')}</div>
+  }
+  const act = (action: MediaAction): void => {
+    if (!item.own) onControl(action)
+    else if (action === 'toggle') player.toggle()
+    else if (action === 'next') player.next()
+    else player.prev()
+  }
+  return (
+    <section className="box now-playing mb-3">
+      {settings.visualizer ? (
+        <RadialVisualizer active={item.playing} cover={item.cover} title={item.title} size={210} />
+      ) : (
+        <Cover src={item.cover} title={item.title} width={128} height={128} />
+      )}
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="presence-kicker">
+          {t('music.nowPlayingTitle')} · {item.source}
+        </div>
+        <div className="now-playing-title truncate" title={item.title}>
+          {item.title}
+        </div>
+        <div className="muted truncate">{item.artist}</div>
+        <div className="player-controls mt-3">
+          <PlayerButton d={ICONS.prev} label={t('music.prev')} onClick={() => act('previous')} />
+          <PlayerButton d={item.playing ? ICONS.pause : ICONS.play} label={item.playing ? t('music.pause') : t('music.play')} primary onClick={() => act('toggle')} />
+          <PlayerButton d={ICONS.next} label={t('music.next')} onClick={() => act('next')} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
 /** Your own music files, a remote for Yandex Music / Spotify / YouTube, and what you listened to. */
 export function MusicPage(): ReactNode {
   const { t, tn, duration } = useI18n()
-  const { meta, tracker } = useApp()
+  const { meta } = useApp()
   const player = usePlayer()
   const [rescan, setRescan] = useState(0)
   const lib = useQuery(() => api.scanMusic(rescan > 0), [rescan])
@@ -45,7 +93,6 @@ export function MusicPage(): ReactNode {
   const folders = lib.data?.folders ?? []
   const needle = filter.trim().toLowerCase()
   const shown = needle ? tracks.filter((x) => `${x.title} ${x.artist} ${x.album}`.toLowerCase().includes(needle)) : tracks
-  const media = tracker.media
 
   return (
     <div className="container">
@@ -66,6 +113,7 @@ export function MusicPage(): ReactNode {
       </div>
       {meta.demo && <Flash className="mb-3">{t('music.demo')}</Flash>}
       <ErrorFlash error={addFolder.error ?? removeFolder.error ?? control.error} />
+      <NowPlaying onControl={(action) => void control.run(action)} />
 
       <div className="layout-sidebar">
         <div className="stack">
@@ -111,49 +159,6 @@ export function MusicPage(): ReactNode {
         </div>
 
         <aside className="stack">
-          <section className="box">
-            <div className="box-header">
-              <h2 className="box-title">{t('music.remote')}</h2>
-            </div>
-            <div className="box-body stack stack-sm">
-              {media ? (
-                <>
-                  <div className="row">
-                    {media.thumbnail ? (
-                      <img className="presence-art" src={media.thumbnail} alt="" draggable={false} />
-                    ) : (
-                      <span className="presence-art presence-art-empty">
-                        <UnmuteIcon size={20} />
-                      </span>
-                    )}
-                    <div className="grow" style={{ minWidth: 0 }}>
-                      <div className="bold truncate" title={media.title}>
-                        {media.title}
-                      </div>
-                      <div className="small muted truncate">{media.artist}</div>
-                      <div className="small muted">
-                        {media.sourceName}
-                        {media.playing ? '' : ` · ${t('presence.paused')}`}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="player-controls" style={{ justifyContent: 'center' }}>
-                    <PlayerButton d={ICONS.prev} label={t('music.prev')} onClick={() => void control.run('previous')} />
-                    <PlayerButton
-                      d={media.playing ? ICONS.pause : ICONS.play}
-                      label={media.playing ? t('music.pause') : t('music.play')}
-                      primary
-                      onClick={() => void control.run('toggle')}
-                    />
-                    <PlayerButton d={ICONS.next} label={t('music.next')} onClick={() => void control.run('next')} />
-                  </div>
-                </>
-              ) : (
-                <p className="small muted m-0">{t('music.remoteEmpty')}</p>
-              )}
-            </div>
-          </section>
-
           <section className="box">
             <div className="box-header">
               <h2 className="box-title">{t('music.folders')}</h2>

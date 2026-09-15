@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain, nativeTheme, powerMonitor, protocol, session, shell } from 'electron'
+import { BrowserWindow, app, desktopCapturer, dialog, ipcMain, nativeTheme, powerMonitor, protocol, session, shell } from 'electron'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { HOST_METHODS, IPC_CHANGED, IPC_INVOKE, SERVICE_METHODS, type HostHandlers } from '@shared/api'
@@ -198,6 +198,19 @@ async function main(): Promise<void> {
     launchGame: (id) => games.launch(id)
   }
   registerIpc(service, host)
+
+  // The music visualizer listens to what the PC plays (system audio loopback) — analysed on the fly,
+  // never recorded — and only while the "move with the music" setting is on.
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    if (!service.getSettings().visualizer) {
+      callback({})
+      return
+    }
+    desktopCapturer
+      .getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+      .then((sources) => callback(sources[0] ? { video: sources[0], audio: 'loopback' } : {}))
+      .catch(() => callback({}))
+  })
 
   // AniLib/MangaLib covers are hotlink-protected: the CDN answers 403 without their Referer.
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['https://*.cdnlibs.org/*', 'https://*.imglib.info/*'] }, (details, callback) => {

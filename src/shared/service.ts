@@ -116,7 +116,8 @@ export function defaultSettings(language: T.Lang): T.Settings {
     weekStartsOn: language === 'ru' ? 1 : 0,
     reminders: true,
     remindBeforeMin: 5,
-    musicFolders: []
+    musicFolders: [],
+    visualizer: true
   }
 }
 

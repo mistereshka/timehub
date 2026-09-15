@@ -15,6 +15,7 @@ import { isTypingTarget } from '../utils'
 import { AppIcon, HoverCard } from './common'
 import { GameCard, MusicCard } from './PresenceCards'
 import logo from '../assets/logo.png'
+import { Equalizer } from './Visualizer'
 
 export function AppHeader(): ReactNode {
   const { t } = useI18n()
@@ -131,7 +132,7 @@ function PresencePills(): ReactNode {
         <HoverCard
           anchor={
             <span className="pill pill-music">
-              {media.kind === 'video' ? <PlayIcon size={14} /> : <UnmuteIcon size={14} />}
+              {media.kind === 'video' ? <PlayIcon size={14} /> : settings.visualizer ? <Equalizer active={media.playing} /> : <UnmuteIcon size={14} />}
               <span className="truncate">
                 {media.title}
                 {media.artist ? ` — ${media.artist}` : ''}

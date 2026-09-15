@@ -740,5 +740,11 @@ export const ru: Record<MessageKey, string> = {
   'games.last': 'последний раз {ago}',
   'games.report': 'Отчёт',
   'games.emptyTitle': 'Игр не нашлось',
-  'games.emptyText': 'Подключите Steam, Epic или Battle.net — или просто запустите игру, трекер её запомнит.'
+  'games.emptyText': 'Подключите Steam, Epic или Battle.net — или просто запустите игру, трекер её запомнит.',
+
+  'music.nowPlayingTitle': 'Сейчас играет',
+  'settings.music': 'Музыка',
+  'settings.visualizer': 'Анимация под музыку',
+  'settings.visualizerHint':
+    'Эквалайзер в шапке, пульсирующая обложка и спектр в плеере и на вкладке «Музыка». Звук компьютера только анализируется для графики — ничего не записывается и не сохраняется.'
 }

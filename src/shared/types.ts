@@ -23,6 +23,8 @@ export interface Settings {
   remindBeforeMin: number
   /** Folders the music player scans; empty = the Windows "Music" folder */
   musicFolders: string[]
+  /** Visuals that move with the music (listens to system audio while on; nothing is recorded) */
+  visualizer: boolean
 }
 
 export interface Project {

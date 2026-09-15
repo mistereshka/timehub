@@ -110,6 +110,26 @@ export async function itunesCover(artist: string, album: string): Promise<string
   return null
 }
 
+/** Album art for a single track — for players (a browser tab) that report no picture. */
+export async function itunesTrackCover(artist: string, title: string): Promise<string | null> {
+  const a = norm(artist)
+  const t = norm(title)
+  if (!a || !t) return null
+  for (const country of [undefined, 'RU']) {
+    const r = await getJson(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${title}`)}&media=music&entity=song&limit=10${country ? `&country=${country}` : ''}`
+    )
+    const list: ItunesAlbum[] = r?.results ?? []
+    const byArtist = list.filter((x) => {
+      const name = norm(x.artistName ?? '')
+      return name !== '' && (name.includes(a) || a.includes(name))
+    })
+    const hit = byArtist.find((x) => norm(x.trackName ?? '').includes(t)) ?? byArtist[0]
+    if (hit) return artwork(hit)
+  }
+  return null
+}
+
 /** TMDB only stores an API key for movie and series search. */
 export class TmdbConnector implements Connector {
   readonly key = 'tmdb' as const

@@ -1892,6 +1892,90 @@ body {
   text-align: right;
 }
 
+/* ------------------------------------------------------------- visualizer */
+
+.eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 14px;
+  height: 12px;
+  flex: none;
+}
+.eq > span {
+  display: block;
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--fgColor-success);
+  transform: scaleY(0.25);
+  transform-origin: bottom;
+}
+.pulse-art {
+  flex: none;
+  border-radius: 10px;
+  transform: scale(calc(1 + var(--pulse, 0) * 0.08));
+  box-shadow: 0 0 calc(var(--pulse, 0) * 26px) calc(var(--pulse, 0) * 5px) color-mix(in srgb, var(--fgColor-success) 55%, transparent);
+  transition: transform 60ms linear;
+}
+.presence-spectrum {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+.presence-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.player-bar {
+  position: relative;
+  overflow: hidden;
+}
+.player-bar > :not(.player-spectrum) {
+  position: relative;
+  z-index: 1;
+}
+.player-spectrum {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.16;
+  pointer-events: none;
+}
+.radial-viz {
+  position: relative;
+  flex: none;
+}
+.radial-viz canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.radial-art {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(calc(1 + var(--pulse, 0) * 0.06));
+}
+.radial-art .cover {
+  border-radius: 50%;
+}
+.now-playing {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 24px;
+}
+.now-playing-title {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
 /* ------------------------------------------------------------------ games */
 
 .games-grid {

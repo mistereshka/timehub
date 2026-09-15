@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mediaKind } from '@shared/media'
 import type { MediaAction, MediaPresence } from '@shared/types'
 import type { Connector, Env } from './connections'
-import { itunesCover } from './search'
+import { itunesCover, itunesTrackCover } from './search'
 
 // Polls Windows' Global System Media Transport Controls (what shows in the volume flyout)
 // and prints one JSON line whenever the track or play state changes, plus a heartbeat.
@@ -40,7 +40,7 @@ while ($true) {
       $st = [string]$s.GetPlaybackInfo().PlaybackStatus
       $track = "$($s.SourceAppUserModelId)|$($p.Title)|$($p.Artist)"
       $key = "$track|$st"
-      $obj = @{ app = $s.SourceAppUserModelId; title = $p.Title; artist = $p.Artist; album = $p.AlbumTitle; status = $st; position = [int64]$tl.Position.TotalMilliseconds; duration = [int64]$tl.EndTime.TotalMilliseconds }
+      $obj = @{ app = $s.SourceAppUserModelId; title = $p.Title; artist = $p.Artist; album = $p.AlbumTitle; status = $st; position = [int64]$tl.Position.TotalMilliseconds; duration = [int64]$tl.EndTime.TotalMilliseconds; updated = [int64]$tl.LastUpdatedTime.ToUnixTimeMilliseconds() }
       if ($track -ne $lastTrack -and $p.Thumbnail) {
         try {
           $stream = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
@@ -134,6 +134,8 @@ interface MediaLine {
   status?: string
   position?: number
   duration?: number
+  /** When the player last reported the position (ms since epoch) */
+  updated?: number
   thumb?: string
 }
 
@@ -180,6 +182,32 @@ export class MediaConnector implements Connector {
       }
       await new Promise((r) => setTimeout(r, 3000))
     }
+  }
+
+  private readonly trackCovers = new Map<string, string | null>()
+
+  /** Browsers often give no picture: borrow the track's album art from iTunes. */
+  private findCover(env: Env, artist: string, title: string): void {
+    const key = `${artist}|${title}`.toLowerCase()
+    const apply = (url: string): void => {
+      if (!this.presence || this.presence.title !== title || this.thumbnail) return
+      this.thumbnail = url
+      this.presence = { ...this.presence, thumbnail: url }
+      env.broadcast('tracker')
+    }
+    if (this.trackCovers.has(key)) {
+      const url = this.trackCovers.get(key)
+      if (url) apply(url)
+      return
+    }
+    this.trackCovers.set(key, null)
+    itunesTrackCover(artist, title)
+      .then((url) => {
+        if (!url) return
+        this.trackCovers.set(key, url)
+        apply(url)
+      })
+      .catch(() => {})
   }
 
   /** Remote for whatever plays now (Yandex Music in a browser, Spotify…). */
@@ -260,13 +288,15 @@ export class MediaConnector implements Connector {
       kind,
       positionMs: msg.duration ? (msg.position ?? null) : null,
       durationMs: msg.duration || null,
-      updatedAt: now,
+      // Browsers report the position rarely: count from when they did, not from this message.
+      updatedAt: msg.updated && msg.updated > 0 && msg.updated <= now + 1000 ? msg.updated : now,
       thumbnail: this.thumbnail
     }
     env.service.recordMedia(
       { at: now, source: msg.app, title: msg.title, artist: msg.artist ?? '', album: msg.album ?? '', playing, kind },
       HEARTBEAT_MS
     )
+    if (!this.thumbnail && kind === 'music') this.findCover(env, msg.artist ?? '', msg.title)
     // New music shows up in the library within a minute, not at the next half-hourly sync.
     if (kind === 'music' && playing && now - this.lastRefresh > 60_000) {
       this.lastRefresh = now

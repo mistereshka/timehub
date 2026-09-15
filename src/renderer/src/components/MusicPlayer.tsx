@@ -2,8 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Link } from 'react-router'
 import type { MusicTrack } from '@shared/types'
 import { api } from '../api'
+import { useApp } from '../context'
 import { useI18n } from '../i18n'
 import { Cover } from './common'
+import { PulseArt, Spectrum } from './Visualizer'
 
 type Repeat = 'off' | 'all' | 'one'
 
@@ -272,11 +274,16 @@ const clock = (sec: number): string => {
 export function PlayerBar(): ReactNode {
   const p = usePlayer()
   const { t } = useI18n()
+  const { settings } = useApp()
   const c = p.current
   if (!c) return null
+  const vis = settings.visualizer && p.playing
   return (
     <div className="player-bar">
-      <Cover src={c.cover} title={c.album || c.title} width={40} height={40} />
+      {settings.visualizer && <Spectrum active={vis} bars={96} className="player-spectrum" />}
+      <PulseArt active={vis}>
+        <Cover src={c.cover} title={c.album || c.title} width={40} height={40} />
+      </PulseArt>
       <div className="player-meta">
         <div className="bold truncate" title={c.title}>
           {c.title}

@@ -8,6 +8,9 @@ import { api } from '../api'
 import { useNow } from '../hooks'
 import { useI18n } from '../i18n'
 import { AppIcon, MiniProgress } from './common'
+import { useApp } from '../context'
+import { ICONS, PlayerButton } from './MusicPlayer'
+import { PulseArt, Spectrum } from './Visualizer'
 
 /** "Playing a game" card, like the one in a Discord profile. */
 export function GameCard({ game }: { game: GamePresence }): ReactNode {
@@ -63,7 +66,10 @@ export function GameCard({ game }: { game: GamePresence }): ReactNode {
 /** "Listening to Spotify" card with the track position. */
 export function MusicCard({ media }: { media: MediaPresence }): ReactNode {
   const { t } = useI18n()
+  const { settings } = useApp()
   const now = useNow(1000)
+  const vis = settings.visualizer && media.playing
+  const control = (action: 'toggle' | 'next' | 'previous'): void => void api.mediaControl(action).catch(() => {})
   const position =
     media.positionMs != null
       ? Math.min(media.durationMs ?? Number.MAX_SAFE_INTEGER, media.positionMs + (media.playing ? now - media.updatedAt : 0))
@@ -72,13 +78,15 @@ export function MusicCard({ media }: { media: MediaPresence }): ReactNode {
     <div className="presence-card">
       <div className="presence-kicker">{t(media.kind === 'video' ? 'presence.watching' : 'presence.listening', { app: media.sourceName })}</div>
       <div className="presence-main">
-        {media.thumbnail ? (
-          <img className="presence-art" src={media.thumbnail} alt="" draggable={false} />
-        ) : (
-          <span className="presence-art presence-art-empty">
-            <UnmuteIcon size={20} />
-          </span>
-        )}
+        <PulseArt active={vis}>
+          {media.thumbnail ? (
+            <img className="presence-art" src={media.thumbnail} alt="" draggable={false} />
+          ) : (
+            <span className="presence-art presence-art-empty">
+              <UnmuteIcon size={20} />
+            </span>
+          )}
+        </PulseArt>
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="presence-title truncate" title={media.title}>
             {media.title}
@@ -94,6 +102,17 @@ export function MusicCard({ media }: { media: MediaPresence }): ReactNode {
           <span className="mono small">{formatClock(media.durationMs)}</span>
         </div>
       )}
+      {settings.visualizer && <Spectrum active={vis} bars={40} className="presence-spectrum" />}
+      <div className="presence-controls">
+        <PlayerButton d={ICONS.prev} label={t('music.prev')} onClick={() => control('previous')} />
+        <PlayerButton
+          d={media.playing ? ICONS.pause : ICONS.play}
+          label={media.playing ? t('music.pause') : t('music.play')}
+          primary
+          onClick={() => control('toggle')}
+        />
+        <PlayerButton d={ICONS.next} label={t('music.next')} onClick={() => control('next')} />
+      </div>
       {!media.playing && <div className="small muted">{t('presence.paused')}</div>}
     </div>
   )

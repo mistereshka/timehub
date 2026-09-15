@@ -125,6 +125,14 @@ export function SettingsPage(): ReactNode {
       </div>
       <ErrorFlash error={testReminder.error} />
 
+      <h2 className="subhead">{t('settings.music')}</h2>
+      <CheckRow
+        checked={settings.visualizer}
+        onChange={(v) => updateSettings({ visualizer: v })}
+        title={t('settings.visualizer')}
+        hint={t('settings.visualizerHint')}
+      />
+
       <h2 className="subhead">{t('settings.data')}</h2>
       <p className="muted">{t('settings.dataHint')}</p>
       <div className="row row-wrap">
