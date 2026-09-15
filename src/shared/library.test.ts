@@ -86,11 +86,12 @@ describe('library', () => {
     const orbit = svc.listLibrary({ kind: 'music' }).find((i) => i.title === 'Орбит без сахара')!
     svc.setLibraryCover(orbit.id, 'https://covers.example/orbit.jpg')
     svc.seedMedia('Chrome', 'Выхода нет', 'Сплин, Гость', 'Гранатовый альбом', t + 8 * MINUTE, t + 12 * MINUTE)
-    // the album card comes in and the track heard before joins it
-    expect(svc.refreshMusicInLibrary()).toBe(2)
+    // the album card comes in, the new track gets a card and both tracks sit inside the album
+    expect(svc.refreshMusicInLibrary()).toBe(3)
     const shelf = svc.listLibrary({ kind: 'music' })
-    expect(shelf.map((i) => i.title).sort()).toEqual(['Гранатовый альбом', 'Одиночка'])
     const album = shelf.find((i) => i.title === 'Гранатовый альбом')!
+    expect(shelf.filter((i) => i.parentId == null).map((i) => i.title).sort()).toEqual(['Гранатовый альбом', 'Одиночка'])
+    expect(shelf.filter((i) => i.parentId === album.id).map((i) => i.title).sort()).toEqual(['Выхода нет', 'Орбит без сахара'])
     // the album takes the cover its track had
     expect(album).toMatchObject({ originalTitle: 'Сплин', format: 'Альбом · 2 трека', progress: 2, coverUrl: 'https://covers.example/orbit.jpg' })
     expect(svc.borrowAlbumCover('Сплин', 'Гранатовый альбом', 'https://covers.example/other.jpg')).toBe(false)
@@ -145,8 +146,10 @@ describe('library', () => {
     expect(music.plays).toBe(3)
     expect(music.topArtists.map((a) => a.name)).toEqual(['Daft Punk'])
 
-    expect(svc.refreshMusicInLibrary()).toBe(1)
-    const [album] = svc.listLibrary({ kind: 'music' })
+    expect(svc.refreshMusicInLibrary()).toBe(4)
+    const shelf = svc.listLibrary({ kind: 'music' })
+    const album = shelf.find((i) => i.parentId == null)!
+    expect(shelf.filter((i) => i.parentId === album.id)).toHaveLength(3)
     expect(album).toMatchObject({
       title: 'Discovery', originalTitle: 'Daft Punk', format: 'Альбом · 3 трека', status: 'active', progress: 3, source: 'tracker'
     })

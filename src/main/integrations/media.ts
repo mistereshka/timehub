@@ -168,7 +168,8 @@ export class MediaConnector implements Connector {
     env.service.refreshMusicInLibrary()
     const missing = env.service
       .listLibrary({ kind: 'music' })
-      .filter((i) => !i.coverUrl && i.source === 'tracker' && !this.coverTried.has(i.id))
+      // tracks inside an album show the album's cover, so only the shelf itself is looked up
+      .filter((i) => !i.coverUrl && i.source === 'tracker' && i.parentId == null && !this.coverTried.has(i.id))
     // iTunes allows ~20 requests a minute and a lookup takes up to two (world, then RU store): one item
     // every 6 s stays under it. The rest waits for the next sync.
     for (const item of missing.slice(0, 60)) {

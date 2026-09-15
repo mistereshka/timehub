@@ -259,7 +259,7 @@ const toLibrary = (r: Row): T.LibraryItem => ({
   id: r.id, kind: r.kind, title: r.title, originalTitle: r.original_title, coverUrl: r.cover_url ?? null, status: r.status,
   favorite: bool(r.favorite), progress: r.progress, total: r.total ?? null, latest: r.latest ?? null, rating: r.rating ?? null,
   notes: r.notes, year: r.year ?? null, format: r.format, source: r.source, externalId: r.external_id ?? null, url: r.url ?? null,
-  appId: r.app_id ?? null, statusAuto: bool(r.status_auto), createdAt: r.created_at, updatedAt: r.updated_at,
+  appId: r.app_id ?? null, parentId: r.parent_id ?? null, statusAuto: bool(r.status_auto), createdAt: r.created_at, updatedAt: r.updated_at,
   startedAt: r.started_at ?? null, finishedAt: r.finished_at ?? null, trackedMs: r.tracked_ms ?? 0, lastActivityAt: r.last_activity ?? null
 })
 
@@ -1523,6 +1523,8 @@ export class Service {
   }
 
   deleteLibraryItem(id: T.ID): void {
+    // the tracks of a deleted album go back on the shelf
+    this.db.run('UPDATE library_items SET parent_id = NULL WHERE parent_id = ?', [id])
     this.db.run('DELETE FROM library_items WHERE id = ?', [id])
     this.notify('library')
   }
@@ -1661,10 +1663,10 @@ export class Service {
   }
 
   /**
-   * Music you listen to goes on the shelf. Two or more tracks of one album make an album card
-   * ("Альбом · 3 трека", the artist below it); any other track gets a card of its own with the
-   * album as the format. Played in the last two weeks → "listening", untouched for a month →
-   * "on hold". Progress is the number of plays.
+   * Music you listen to goes on the shelf: every track gets a card with the album as the format,
+   * and two or more tracks of one album also make an album card ("Альбом · 3 трека", the artist
+   * below it) that holds their cards. Played in the last two weeks → "listening", untouched for a
+   * month → "on hold". Progress is the number of plays.
    */
   refreshMusicInLibrary(): number {
     const now = this.now()
@@ -1694,12 +1696,21 @@ export class Service {
       const key = albumKey(g.artist, g.album)
       albums.set(key, [...(albums.get(key) ?? []), g])
     }
-    const shelf: { externalId: string; title: string; artist: string; format: string; plays: number; last: number; members?: string[] }[] = []
-    const joined = new Set<string>()
+    type Card = {
+      externalId: string; title: string; artist: string; format: string; plays: number; last: number
+      /** albums: the cards of their tracks */
+      members?: string[]
+      /** tracks: the album card they sit in */
+      album?: string
+    }
+    // Albums go first so their tracks can be put inside them.
+    const shelf: Card[] = []
+    const albumOf = new Map<string, string>()
     for (const [key, list] of albums) {
       if (list.length < 2) continue
+      const externalId = `album:${key}`.slice(0, 500)
       shelf.push({
-        externalId: `album:${key}`.slice(0, 500),
+        externalId,
         title: list[0].album,
         artist: primaryArtist(list[0].artist),
         format: albumFormat(list.length, ru),
@@ -1707,27 +1718,39 @@ export class Service {
         last: Math.max(...list.map((g) => g.last)),
         members: list.map(trackId)
       })
-      for (const g of list) joined.add(trackId(g))
+      for (const g of list) albumOf.set(trackId(g), externalId)
     }
+    // Every track keeps a card of its own; the ones of an album sit inside it.
     for (const g of heard) {
-      if (joined.has(trackId(g))) continue
-      shelf.push({ externalId: trackId(g), title: g.title, artist: g.artist, format: g.album || (ru ? 'Трек' : 'Track'), plays: g.plays, last: g.last })
+      shelf.push({
+        externalId: trackId(g), title: g.title, artist: g.artist, format: g.album || (ru ? 'Трек' : 'Track'), plays: g.plays, last: g.last,
+        album: albumOf.get(trackId(g))
+      })
     }
     let changed = 0
     transaction(this.db, () => {
+      const albumIds = new Map<string, T.ID>()
       for (const r of shelf) {
-        const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [r.externalId])
+        const find = (): Row | undefined => this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [r.externalId])
+        const item = find()
         // An album without a cover of its own borrows one from any of its tracks' cards.
         const borrowed = r.members && !item?.cover_url ? this.trackCardCover(r.members) : null
+        const parentId = r.album ? (albumIds.get(r.album) ?? null) : null
         if (!item) {
           this.db.run(
             `INSERT INTO library_items (kind, title, original_title, cover_url, status, progress, format, source, external_id, status_auto,
-               created_at, updated_at, started_at)
-             VALUES ('music', ?, ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
-            [r.title, r.artist, borrowed, r.last >= stale ? 'active' : 'on_hold', r.plays, r.format, r.externalId, now, now, now]
+               created_at, updated_at, started_at, parent_id)
+             VALUES ('music', ?, ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?, ?)`,
+            [r.title, r.artist, borrowed, r.last >= stale ? 'active' : 'on_hold', r.plays, r.format, r.externalId, now, now, now, parentId]
           )
+          if (r.members) albumIds.set(r.externalId, find()!.id)
           changed++
           continue
+        }
+        if (r.members) albumIds.set(r.externalId, item.id)
+        else if ((item.parent_id ?? null) !== parentId) {
+          this.db.run('UPDATE library_items SET parent_id = ? WHERE id = ?', [parentId, item.id])
+          changed++
         }
         if (borrowed) {
           this.db.run('UPDATE library_items SET cover_url = ? WHERE id = ?', [borrowed, item.id])
@@ -1744,17 +1767,6 @@ export class Service {
           ])
           changed++
         }
-      }
-      // A track that joined its album leaves its own card — unless you changed that card yourself.
-      for (const externalId of joined) {
-        const own = this.db.get(
-          `SELECT id FROM library_items WHERE source = 'tracker' AND external_id = ?
-             AND status_auto = 1 AND favorite = 0 AND rating IS NULL AND notes = ''`,
-          [externalId]
-        )
-        if (!own) continue
-        this.db.run('DELETE FROM library_items WHERE id = ?', [own.id])
-        changed++
       }
     })
     if (changed) this.notify('library')

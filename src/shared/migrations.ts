@@ -302,6 +302,11 @@ export const MIGRATIONS: string[] = [
   DELETE FROM library_items
     WHERE source = 'tracker' AND kind = 'music' AND external_id LIKE 'music:%'
       AND status_auto = 1 AND favorite = 0 AND rating IS NULL AND notes = '';
+  `,
+  // v9: a track on the music shelf can sit inside its album card.
+  `
+  ALTER TABLE library_items ADD COLUMN parent_id INTEGER REFERENCES library_items(id) ON DELETE SET NULL;
+  CREATE INDEX library_items_parent ON library_items(parent_id);
   `
 ]
 

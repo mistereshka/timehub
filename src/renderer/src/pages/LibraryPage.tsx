@@ -12,7 +12,7 @@ import { useI18n, type MessageKey } from '../i18n'
 import { libraryStatusLabel, libraryUnit } from '../utils'
 import { Blankslate, Cover, ErrorFlash, MiniProgress } from '../components/common'
 import {
-  AlbumTracks, KIND_EMOJI, LIBRARY_KINDS, LIBRARY_STATUSES, LibraryAddDialog, LibraryItemDialog, isAlbum, sourceName
+  KIND_EMOJI, LIBRARY_KINDS, LIBRARY_STATUSES, LibraryAddDialog, LibraryItemDialog, sortTracks, sourceName
 } from '../components/LibraryDialogs'
 
 type SortKey = 'updated' | 'name' | 'rating' | 'progress'
@@ -81,15 +81,23 @@ export function LibraryPage(): ReactNode {
       return p
     })
 
-  const all = items.data ?? []
+  const everything = items.data ?? []
+  const ids = new Set(everything.map((i) => i.id))
+  // Tracks of an album live inside its card, not on the shelf itself.
+  const tracksOf = new Map<LibraryItem['id'], LibraryItem[]>()
+  for (const i of everything) {
+    if (i.parentId != null && ids.has(i.parentId)) tracksOf.set(i.parentId, [...(tracksOf.get(i.parentId) ?? []), i])
+  }
+  const all = everything.filter((i) => i.parentId == null || !ids.has(i.parentId))
   const ofKind = kind ? all.filter((i) => i.kind === kind) : all
   const countStatus = (s: string): number => ofKind.filter((i) => (s === 'favorite' ? i.favorite : i.status === s)).length
   const needle = filter.trim().toLowerCase()
+  const matches = (i: LibraryItem): boolean => i.title.toLowerCase().includes(needle) || i.originalTitle.toLowerCase().includes(needle)
   const shown = sortItems(
     ofKind.filter(
       (i) =>
         (status === 'all' || (status === 'favorite' ? i.favorite : i.status === status)) &&
-        (!needle || i.title.toLowerCase().includes(needle) || i.originalTitle.toLowerCase().includes(needle))
+        (!needle || matches(i) || (tracksOf.get(i.id) ?? []).some(matches))
     ),
     sort,
     dir
@@ -184,7 +192,8 @@ export function LibraryPage(): ReactNode {
           ) : view === 'list' ? (
             <div className="box">
               {shown.map((i) => (
-                <LibraryRow key={i.id} item={i} onOpen={() => setEditing(i)} />
+                // a search that hits a track shows it inside its album
+                <LibraryRow key={i.id} item={i} tracks={tracksOf.get(i.id)} openTracks={!!needle && !matches(i)} onOpen={setEditing} />
               ))}
             </div>
           ) : (
@@ -208,8 +217,11 @@ export function LibraryPage(): ReactNode {
       )}
       {editing && (
         <LibraryItemDialog
+          key={'newKind' in editing ? 'new' : editing.id}
           item={'newKind' in editing ? null : editing}
           kind={'newKind' in editing ? editing.newKind : undefined}
+          tracks={'newKind' in editing ? undefined : tracksOf.get(editing.id)}
+          onOpenItem={setEditing}
           onClose={() => setEditing(null)}
         />
       )}
@@ -286,20 +298,35 @@ function StatusMenu({ item }: { item: LibraryItem }): ReactNode {
   )
 }
 
-function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): ReactNode {
+function LibraryRow({
+  item,
+  tracks = [],
+  openTracks = false,
+  coverFallback = null,
+  onOpen
+}: {
+  item: LibraryItem
+  /** an album's own track cards, shown under it when unfolded */
+  tracks?: LibraryItem[]
+  openTracks?: boolean
+  /** tracks without a picture wear their album's cover */
+  coverFallback?: string | null
+  onOpen(item: LibraryItem): void
+}): ReactNode {
   const { t, tn, ago } = useI18n()
   const fresh = freshCount(item)
   const unit = libraryUnit(item.kind, t, item.source)
-  const album = isAlbum(item)
   const [open, setOpen] = useState(false)
+  const unfolded = open || openTracks
   return (
+    <>
     <div className="box-row hoverable lib-row">
-      <button type="button" className="lib-cover-btn" onClick={onOpen}>
-        <Cover src={item.coverUrl} title={item.title} width={58} height={82} />
+      <button type="button" className="lib-cover-btn" onClick={() => onOpen(item)}>
+        <Cover src={item.coverUrl ?? coverFallback} title={item.title} width={58} height={82} />
         {fresh > 0 && <span className="lib-fresh">{fresh}</span>}
       </button>
       <div className="grow" style={{ minWidth: 0 }}>
-        <button type="button" className="lib-title" onClick={onOpen}>
+        <button type="button" className="lib-title" onClick={() => onOpen(item)}>
           {item.title}
         </button>
         {item.originalTitle && item.originalTitle !== item.title && <div className="small muted truncate">{item.originalTitle}</div>}
@@ -309,14 +336,13 @@ function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): Re
           {fresh > 0 && <span className="fg-success">{tn('lib.new', fresh)}</span>}
           {(item.format || item.year) && <span>{[item.format, item.year].filter(Boolean).join(' · ')}</span>}
           <span>{sourceName(item.source, t)}</span>
-          {album && (
-            <button type="button" className="album-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-              {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
-              {t('lib.showTracks')}
+          {tracks.length > 0 && (
+            <button type="button" className="album-toggle" aria-expanded={unfolded} onClick={() => setOpen(!unfolded)}>
+              {unfolded ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+              {`${t('lib.showTracks')} · ${tracks.length}`}
             </button>
           )}
         </div>
-        {album && open && <AlbumTracks itemId={item.id} />}
         {item.total ? (
           <div className="lib-progress">
             <MiniProgress value={item.progress / item.total} />
@@ -341,6 +367,14 @@ function LibraryRow({ item, onOpen }: { item: LibraryItem; onOpen(): void }): Re
         <span className="small muted nowrap">{ago(item.updatedAt)}</span>
       </div>
     </div>
+    {unfolded && tracks.length > 0 && (
+      <div className="lib-children">
+        {sortTracks(tracks).map((tr) => (
+          <LibraryRow key={tr.id} item={tr} coverFallback={item.coverUrl} onOpen={onOpen} />
+        ))}
+      </div>
+    )}
+    </>
   )
 }
 

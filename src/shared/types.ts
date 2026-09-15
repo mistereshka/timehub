@@ -662,6 +662,8 @@ export interface LibraryItem {
   url: string | null
   /** Tracked app (games) */
   appId: ID | null
+  /** Music: the album card this track sits in */
+  parentId: ID | null
   /** Status follows the source / tracker; cleared once you change it by hand */
   statusAuto: boolean
   createdAt: number
