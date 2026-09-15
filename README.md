@@ -2,53 +2,55 @@
 
 # timehub
 
-**Задачи, учёт времени и автоматическое расписание дня — в стиле GitHub.**
-Приложение для Windows, которое само видит, чем вы заняты (как Discord видит игры), и складывает из этого расписание каждого дня.
+**Tasks, time tracking and an automatic timeline of your day — for Windows.**
 
-![Обзор: contribution graph, приложения за день и лента активности](docs/screenshots/overview-dark.png)
+timehub notices what you're doing on your PC, the way Discord notices games, and turns it into a schedule of every day — right next to your tasks, goals, music, games and chats.
 
-## Возможности
+![Overview: contribution graph, today's apps and the activity feed](docs/screenshots/overview-dark.png)
 
-- **Задачи как GitHub Issues** — номера `#12`, метки, проекты, приоритеты, сроки, Markdown-описания с чек-листами и поиск с квалификаторами: `is:open label:работа due:overdue sort:time-desc`.
-- **Учёт времени** — таймер в один клик (в шапке, в трее, в списке задач), ручные записи, оценка и прогресс по ней.
-- **Автотрекинг как в Discord** — раз в несколько секунд смотрит активное окно (приложение + заголовок), замечает простой, блокировку и сон, находит запущенные игры (Steam, Epic, Riot, GOG, Battle.net…).
-- **Расписание дня** — почасовая шкала «что я делал» и понятный список: `10:05–11:40 · VS Code · 1ч 28м`.
-- **Планирование** — страница «Сегодня» с drag & drop, недельная доска и повторяющиеся задачи (каждый день, по будням, по дням недели, раз в месяц) с сериями 🔥.
-- **Contribution graph** — зелёные квадратики за год по активному времени или по закрытым задачам, плюс лента событий.
-- **Правила** — «Chrome + YouTube → Медиа», «VS Code + timehub → задача #4» или → цель (время засчитывается, только если не идёт таймер, чтобы не считать дважды).
-- **Как в Discord** — в шапке «Играет в …» и «Слушает …»; наведите курсор — карточка с обложкой, временем в игре, 🔥 серией и онлайном (Steam, Roblox).
-- **Повторы в пару кликов** — «Изучение английского по вторникам и пятницам в 19:00 на 2 часа» прямо из окна новой задачи; можно засчитывать выполнение по набранному времени. Серии 🔥 у задач, целей и игр.
-- **Цели** — журнал больших целей: кнопка «Работать над целью» запускает таймер, прогресс вручную или по задачам, подзадачи, записи в журнале.
-- **Отчёты по каждому приложению за всё время** — дни, месяцы, часы, дни недели, серии, проекты в редакторах кода.
-- **Библиотека** — аниме, манга, книги, фильмы, сериалы и игры со статусами «смотрю / прочитано / пройдено…». Списки AniLib / MangaLib / Shikimori подтягиваются сами, статусы игр обновляются по времени в игре.
-- **Подключения** — Steam, Roblox, Epic, музыка Windows, Spotify, статус в Discord, AniLib, Shikimori, TMDB, GitHub (вклады на contribution graph), календари по iCal. Ключи шифруются и не покидают компьютер.
-- **Приватность** — всё хранится локально в SQLite. Для каждого приложения можно отключить запись заголовков или игнорировать его совсем; есть пауза и экспорт в JSON/CSV.
-- Русский и английский интерфейс, светлая / тёмная / приглушённая тема на [Primer](https://primer.style) — дизайн-системе GitHub.
+## Features
 
-## Скриншоты
+- **Tasks** — numbered (`#12`), with labels, projects, priorities, due dates, subtasks, progress, Markdown descriptions with checklists and search qualifiers: `is:open label:work due:overdue sort:time-desc`.
+- **Time tracking** — a one-click timer in the header, the tray and on every task; manual entries, estimates and progress.
+- **Automatic tracking** — samples the foreground window every few seconds and notices idle time, the lock screen and sleep. Browser tabs on known sites (YouTube, Google, Yandex Music, GitHub, anime sites…) count as those sites rather than as "Chrome". timehub never tracks itself.
+- **Daily schedule** — an hour-by-hour timeline plus a readable agenda: `10:05–11:40 · VS Code · 1h 28m`. Quick app switches are grouped so the timeline stays readable.
+- **Planning** — Today with drag & drop, a weekly board and recurring tasks ("English every Tue and Fri at 19:00 for 2 hours") that can complete by tracked time, with 🔥 streaks.
+- **Goals** — a journal of big goals with a goal timer, progress, subtasks and a practice schedule that shows up in Today and on the Schedule.
+- **Reminders** — Windows notifications before timed tasks and calendar events.
+- **Playing / Listening cards** — hover the header to see the game or track with its cover, time played, streaks, players online (Steam, Roblox) and track controls. Visuals move with the music; you can turn them off.
+- **Music** — a player for your own files (MP3/FLAC tags, covers, queue, media keys) and a remote for Yandex Music, Spotify or YouTube. Every play goes to your stats and the library.
+- **Games** — everything installed from Steam (several accounts), Epic and Battle.net, plus games the tracker has seen; one click to play. Dota 2 rank, record, recent matches and heroes via OpenDota.
+- **Social** — time in Telegram, Discord and other messengers, who you talk to and your calls, taken from Windows' own record of which app used the microphone.
+- **Library** — anime, manga, books, films, series, games and music with statuses; AniLib, MangaLib, Shikimori, Steam and NewDeaf keep it up to date.
+- **Reports** — an all-time report for every app and site, a contribution graph of your activity and an activity feed.
+- **Connections** — Steam, Roblox, Epic, Battle.net, Windows media, Spotify, Discord status, AniLib, Shikimori, NewDeaf, TMDB, GitHub contributions and iCal calendars. Keys are encrypted and never leave your PC.
+- **Privacy** — everything is stored locally in SQLite. Turn off window titles for any app or ignore it completely, pause tracking at any time, export to JSON or CSV.
+- Russian and English interface; light, dark and dark dimmed themes built on [Primer](https://primer.style).
+
+## Screenshots
 
 | | |
 |---|---|
-| ![Сегодня](docs/screenshots/today.png) | ![Планы](docs/screenshots/plan.png) |
-| **Сегодня** — план на день, просроченное, сделанное, что открыто прямо сейчас | **Планы** — неделя на доске, повторяющиеся задачи и серии |
-| ![Задачи](docs/screenshots/tasks.png) | ![Задача](docs/screenshots/task.png) |
-| **Задачи** — список как Issues с фильтрами | **Задача** — описание, журнал времени, таймер |
-| ![Расписание](docs/screenshots/schedule.png) | ![Активность](docs/screenshots/activity.png) |
-| **Расписание** — что вы делали в течение дня | **Активность** — приложения, категории, правила |
+| ![Today](docs/screenshots/today.png) | ![Plan](docs/screenshots/plan.png) |
+| **Today** — the day's plan, overdue and done tasks, what's open right now | **Plan** — the week on a board, recurring tasks and streaks |
+| ![Tasks](docs/screenshots/tasks.png) | ![Task](docs/screenshots/task.png) |
+| **Tasks** — a filterable list | **Task** — description, time log, timer |
+| ![Schedule](docs/screenshots/schedule.png) | ![Activity](docs/screenshots/activity.png) |
+| **Schedule** — what you did during the day | **Activity** — apps, categories and rules |
 
 <details>
-<summary>Светлая тема и английский интерфейс</summary>
+<summary>Light theme and English interface</summary>
 
 ![Light theme](docs/screenshots/overview-light.png)
-![English UI](docs/screenshots/overview-en.png)
+![English interface](docs/screenshots/overview-en.png)
 
 </details>
 
-## Установка
+## Install
 
-Скачайте `timehub-Setup-*.exe` из [Releases](https://github.com/mistereshka/timehub/releases) — сейчас это пре-релиз **v0.2.0** для Windows 10/11. Установщик не подписан, поэтому Windows SmartScreen может предупредить: нажмите «Подробнее» → «Выполнить в любом случае».
+Download `timehub-Setup-*.exe` from [Releases](https://github.com/mistereshka/timehub/releases) — currently the **v0.2.0** pre-release for Windows 10/11. The installer isn't code-signed yet, so Windows SmartScreen may warn you: choose *More info* → *Run anyway*.
 
-Или соберите из исходников (нужен [Node.js 24](https://nodejs.org)):
+Or build it from source (requires [Node.js 24](https://nodejs.org)):
 
 ```bash
 git clone https://github.com/mistereshka/timehub
@@ -57,65 +59,50 @@ npm install
 npm run dev
 ```
 
-Установщик Windows (NSIS) собирается командой `npm run build:win` и появляется в папке `release/`.
+`npm run build:win` builds the Windows installer (NSIS) into `release/`.
 
-### Демо в браузере
+### Browser demo
 
-`npm run dev:web` открывает то же приложение на http://localhost:5180 с четырьмя месяцами сгенерированных данных. База работает прямо в браузере (SQLite, скомпилированный в WebAssembly), настоящего трекинга окон там нет. Параметры `?lang=en` и `?theme=light` задают язык и тему.
+`npm run dev:web` opens the same app at http://localhost:5180 with four months of generated data. The database runs right in the browser (SQLite compiled to WebAssembly); there is no real window tracking there. `?lang=en` and `?theme=light` pick the language and theme.
 
-## Как это устроено
+## How it works
 
-| Слой | Технологии |
+| Layer | Stack |
 |---|---|
-| Оболочка | Electron 44, electron-vite |
-| Интерфейс | React 19, TypeScript, `@primer/react`, `@primer/primitives`, Octicons |
-| Данные | встроенный `node:sqlite`, нативная сборка не нужна; в демо — `sql.js` |
-| Win32 | [koffi](https://koffi.dev): `GetForegroundWindow`, `QueryFullProcessImageNameW`, `EnumChildWindows` (для UWP-приложений), `K32EnumProcesses` (для игр), `version.dll` (понятные названия программ) |
+| Shell | Electron 44, electron-vite |
+| UI | React 19, TypeScript, `@primer/react`, `@primer/primitives`, Octicons |
+| Data | built-in `node:sqlite` (no native build step); `sql.js` in the demo |
+| Win32 | [koffi](https://koffi.dev): `GetForegroundWindow`, `QueryFullProcessImageNameW`, `EnumChildWindows` (UWP apps), `K32EnumProcesses` (games), `version.dll` (friendly app names) |
 
-Вся логика живёт в [`src/shared/service.ts`](src/shared/service.ts) и одинаково работает в трёх местах: в Electron, в браузерном демо и в тестах.
+All the logic lives in [`src/shared/service.ts`](src/shared/service.ts) and runs the same way in Electron, in the browser demo and in the tests.
 
 ```
 src/
-  shared/    сервис, схема БД, повторы, поиск, heatmap, расписание (+ тесты)
-  main/      Electron: окно, трей, IPC, трекер активности (Win32 через koffi)
-  preload/   мост window.api
-  renderer/  React-интерфейс и демо-режим
+  shared/    service, database schema, recurrence, search, heatmap, schedule (+ tests)
+  main/      Electron: window, tray, IPC, activity tracker (Win32 via koffi), integrations
+  preload/   the window.api bridge
+  renderer/  React UI and the demo mode
 ```
 
-Как работает трекер:
-1. Раз в N секунд (по умолчанию 5) он берёт активное окно.
-2. Одинаковые подряд «приложение + заголовок» склеиваются в одну сессию.
-3. Если ввода с мыши и клавиатуры нет дольше порога, сессия обрезается на моменте последнего ввода.
-4. Блокировка экрана и сон закрывают сессию.
+The tracker:
+1. Every N seconds (5 by default) it reads the foreground window.
+2. Consecutive samples of the same app and title merge into one session.
+3. When there's no keyboard or mouse input for longer than the idle threshold, the session ends at the last input.
+4. Locking the screen or going to sleep closes the session.
 
-Раз в минуту трекер просматривает запущенные процессы и показывает в шапке «Играет в …», если нашёл игру.
+Once a minute it scans running processes and shows "Playing …" in the header when it finds a game.
 
-## Скрипты
+## Scripts
 
-| Команда | Что делает |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Electron в режиме разработки |
-| `npm run dev:web` | демо в браузере |
-| `npm test` | тесты (vitest) |
-| `npm run typecheck` | проверка типов |
-| `npm run build:win` | установщик для Windows |
+| `npm run dev` | Electron in development mode |
+| `npm run dev:web` | the browser demo |
+| `npm test` | tests (vitest) |
+| `npm run typecheck` | type checking |
+| `npm run build:win` | the Windows installer |
+| `npm run icons` | renders the PNG icons from `resources/*.svg` |
 
-## English
-
-timehub is a GitHub-styled desktop app for Windows:
-- tasks (Issues-like, with labels, projects and `is:open label:x` search) and time tracking;
-- automatic activity tracking of the foreground window, like Discord's game detection;
-- a daily schedule of what you actually did;
-- recurring tasks ("English every Tue and Fri at 19:00 for 2 hours") and a weekly planner, with 🔥 streaks;
-- a contribution graph of your activity (optionally your GitHub contributions);
-- Discord-style "Playing …" / "Listening to …" hover cards, all-time reports per app;
-- a goals journal with a goal timer, manual progress and subtasks;
-- a library of anime, manga, books, movies, series and games synced from AniLib, Shikimori and Steam;
-- connections: Steam, Roblox, Epic, Windows media, Spotify, Discord Rich Presence, TMDB, GitHub, iCal calendars.
-
-All data stays on your machine in SQLite. The UI is available in Russian and English (switch in Settings).
-Download the installer from [Releases](https://github.com/mistereshka/timehub/releases) (v0.2.0 is a pre-release; the installer isn't code-signed, so SmartScreen may ask you to confirm), or run `npm install && npm run dev`, or try `npm run dev:web` for an in-browser demo with sample data.
-
-## Лицензия
+## License
 
 [MIT](LICENSE)
