@@ -83,13 +83,21 @@ describe('library', () => {
     svc.seedMedia('Chrome', 'Орбит без сахара', 'Сплин', 'Гранатовый альбом', t, t + 3 * MINUTE)
     svc.seedMedia('Chrome', 'Одиночка', 'Кто-то', 'Одиночка', t + 4 * MINUTE, t + 7 * MINUTE)
     expect(svc.refreshMusicInLibrary()).toBe(2)
+    const orbit = svc.listLibrary({ kind: 'music' }).find((i) => i.title === 'Орбит без сахара')!
+    svc.setLibraryCover(orbit.id, 'https://covers.example/orbit.jpg')
     svc.seedMedia('Chrome', 'Выхода нет', 'Сплин, Гость', 'Гранатовый альбом', t + 8 * MINUTE, t + 12 * MINUTE)
     // the album card comes in and the track heard before joins it
     expect(svc.refreshMusicInLibrary()).toBe(2)
     const shelf = svc.listLibrary({ kind: 'music' })
     expect(shelf.map((i) => i.title).sort()).toEqual(['Гранатовый альбом', 'Одиночка'])
     const album = shelf.find((i) => i.title === 'Гранатовый альбом')!
-    expect(album).toMatchObject({ originalTitle: 'Сплин', format: 'Альбом · 2 трека', progress: 2 })
+    // the album takes the cover its track had
+    expect(album).toMatchObject({ originalTitle: 'Сплин', format: 'Альбом · 2 трека', progress: 2, coverUrl: 'https://covers.example/orbit.jpg' })
+    expect(svc.borrowAlbumCover('Сплин', 'Гранатовый альбом', 'https://covers.example/other.jpg')).toBe(false)
+    // a track playing with a picture dresses an album that has none
+    svc.setLibraryCover(album.id, '')
+    expect(svc.borrowAlbumCover('Сплин, Гость', 'Гранатовый альбом', 'https://covers.example/2.jpg')).toBe(true)
+    expect(svc.getLibraryItem(album.id)!.coverUrl).toBe('https://covers.example/2.jpg')
     expect(svc.getAlbumTracks(album.id).map((x) => x.title).sort()).toEqual(['Выхода нет', 'Орбит без сахара'])
     expect(svc.refreshMusicInLibrary()).toBe(0)
   })

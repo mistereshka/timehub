@@ -1694,7 +1694,7 @@ export class Service {
       const key = albumKey(g.artist, g.album)
       albums.set(key, [...(albums.get(key) ?? []), g])
     }
-    const shelf: { externalId: string; title: string; artist: string; format: string; plays: number; last: number }[] = []
+    const shelf: { externalId: string; title: string; artist: string; format: string; plays: number; last: number; members?: string[] }[] = []
     const joined = new Set<string>()
     for (const [key, list] of albums) {
       if (list.length < 2) continue
@@ -1704,7 +1704,8 @@ export class Service {
         artist: primaryArtist(list[0].artist),
         format: albumFormat(list.length, ru),
         plays: list.reduce((sum, g) => sum + g.plays, 0),
-        last: Math.max(...list.map((g) => g.last))
+        last: Math.max(...list.map((g) => g.last)),
+        members: list.map(trackId)
       })
       for (const g of list) joined.add(trackId(g))
     }
@@ -1716,15 +1717,21 @@ export class Service {
     transaction(this.db, () => {
       for (const r of shelf) {
         const item = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [r.externalId])
+        // An album without a cover of its own borrows one from any of its tracks' cards.
+        const borrowed = r.members && !item?.cover_url ? this.trackCardCover(r.members) : null
         if (!item) {
           this.db.run(
-            `INSERT INTO library_items (kind, title, original_title, status, progress, format, source, external_id, status_auto,
+            `INSERT INTO library_items (kind, title, original_title, cover_url, status, progress, format, source, external_id, status_auto,
                created_at, updated_at, started_at)
-             VALUES ('music', ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
-            [r.title, r.artist, r.last >= stale ? 'active' : 'on_hold', r.plays, r.format, r.externalId, now, now, now]
+             VALUES ('music', ?, ?, ?, ?, ?, ?, 'tracker', ?, 1, ?, ?, ?)`,
+            [r.title, r.artist, borrowed, r.last >= stale ? 'active' : 'on_hold', r.plays, r.format, r.externalId, now, now, now]
           )
           changed++
           continue
+        }
+        if (borrowed) {
+          this.db.run('UPDATE library_items SET cover_url = ? WHERE id = ?', [borrowed, item.id])
+          changed++
         }
         let status: string = item.status
         if (bool(item.status_auto)) {
@@ -1752,6 +1759,31 @@ export class Service {
     })
     if (changed) this.notify('library')
     return changed
+  }
+
+  /** The first cover found on the cards of these tracks. */
+  private trackCardCover(externalIds: string[]): string | null {
+    for (const externalId of externalIds) {
+      const row = this.db.get(
+        `SELECT cover_url FROM library_items WHERE source = 'tracker' AND external_id = ? AND cover_url IS NOT NULL AND cover_url <> ''`,
+        [externalId]
+      )
+      if (row) return String(row.cover_url)
+    }
+    return null
+  }
+
+  /** A track's picture (from the player or iTunes) for its album card, if that card has none yet. */
+  borrowAlbumCover(artist: string, album: string, url: string): boolean {
+    if (!album.trim() || !url) return false
+    const externalId = `album:${albumKey(artist, album)}`.slice(0, 500)
+    const item = this.db.get(
+      `SELECT id FROM library_items WHERE source = 'tracker' AND external_id = ? AND (cover_url IS NULL OR cover_url = '')`,
+      [externalId]
+    )
+    if (!item) return false
+    this.setLibraryCover(item.id, url)
+    return true
   }
 
   /** The tracks heard from an album card on the shelf, most played first. */

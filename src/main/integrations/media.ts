@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mediaKind } from '@shared/media'
-import type { MediaAction, MediaPresence } from '@shared/types'
+import type { LibraryItem, MediaAction, MediaPresence } from '@shared/types'
 import type { Connector, Env } from './connections'
 import { itunesCover, itunesTrackCover } from './search'
 
@@ -174,10 +174,11 @@ export class MediaConnector implements Connector {
     for (const item of missing.slice(0, 60)) {
       this.coverTried.add(item.id)
       try {
-        // tracks are looked up as songs; album cards from before v8 as albums
+        // tracks are looked up as songs, albums as albums — and an album iTunes doesn't know takes a track's cover
         const url = item.externalId?.startsWith('track:')
           ? await itunesTrackCover(item.originalTitle, item.title)
-          : await itunesCover(item.originalTitle || item.title, item.originalTitle ? item.title : '')
+          : ((await itunesCover(item.originalTitle || item.title, item.originalTitle ? item.title : '')) ??
+            (item.externalId?.startsWith('album:') ? await this.albumTrackCover(env, item) : null))
         if (url) env.service.setLibraryCover(item.id, url)
       } catch {
         // retried after the next launch
@@ -187,6 +188,31 @@ export class MediaConnector implements Connector {
   }
 
   private readonly trackCovers = new Map<string, string | null>()
+  private lentFor = ''
+
+  /** The cover of any track of an album: the ones already found while playing first, then iTunes. */
+  private async albumTrackCover(env: Env, item: LibraryItem): Promise<string | null> {
+    const tracks = env.service.getAlbumTracks(item.id)
+    for (const tr of tracks) {
+      const seen = this.trackCovers.get(`${tr.artist}|${tr.title}`.toLowerCase())
+      if (seen) return seen
+    }
+    for (const tr of tracks.slice(0, 5)) {
+      // the same pace as the album lookups in syncLibrary
+      await new Promise((r) => setTimeout(r, 6000))
+      const url = await itunesTrackCover(tr.artist, tr.title)
+      if (url) return url
+    }
+    return null
+  }
+
+  /** The picture of the track playing now also dresses its album card, if that has none. */
+  private lendCover(env: Env, artist: string, album: string, url: string): void {
+    const key = `${artist}|${album}`.toLowerCase()
+    // data: pictures from the player go to the database only while they're small
+    if (key === this.lentFor || url.length > 300_000) return
+    if (env.service.borrowAlbumCover(artist, album, url)) this.lentFor = key
+  }
 
   /** Browsers often give no picture: borrow the track's album art from iTunes. */
   private findCover(env: Env, artist: string, title: string): void {
@@ -195,6 +221,7 @@ export class MediaConnector implements Connector {
       if (!this.presence || this.presence.title !== title || this.thumbnail) return
       this.thumbnail = url
       this.presence = { ...this.presence, thumbnail: url }
+      if (this.presence.album) this.lendCover(env, this.presence.artist, this.presence.album, url)
       env.broadcast('tracker')
     }
     if (this.trackCovers.has(key)) {
@@ -299,6 +326,7 @@ export class MediaConnector implements Connector {
       HEARTBEAT_MS
     )
     if (!this.thumbnail && kind === 'music') this.findCover(env, msg.artist ?? '', msg.title)
+    else if (this.thumbnail && kind === 'music' && msg.album) this.lendCover(env, msg.artist ?? '', msg.album, this.thumbnail)
     // New music shows up in the library within a minute, not at the next half-hourly sync.
     if (kind === 'music' && playing && now - this.lastRefresh > 60_000) {
       this.lastRefresh = now
