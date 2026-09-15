@@ -1,9 +1,18 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import type { VisualizerPalette } from '@shared/types'
 import { useApp } from '../context'
 import { Cover } from './common'
 
 /** Frequency bands the visuals read, low to high. */
 export const BINS = 48
+
+/** Edge → middle → centre colours of each palette. */
+export const PALETTES: Record<VisualizerPalette, [string, string, string]> = {
+  sunset: ['#8957e5', '#db61a2', '#f85149'],
+  purple: ['#6e40c9', '#a371f7', '#d2a8ff'],
+  red: ['#b62324', '#f85149', '#ff9492'],
+  green: ['#1a7f37', '#3fb950', '#7ee787']
+}
 
 /**
  * One shared analyser for every visual. It listens to what the PC plays
@@ -137,8 +146,13 @@ export function useVisualizer(active: boolean, draw: (a: Analyser) => void): voi
   }, [active, capture])
 }
 
-function successColor(): string {
-  return getComputedStyle(document.documentElement).getPropertyValue('--fgColor-success').trim() || '#3fb950'
+/** The colours chosen in Settings → Music, kept in a ref for the drawing callbacks. */
+function usePalette(): { colors: [string, string, string]; ref: { current: [string, string, string] } } {
+  const { settings } = useApp()
+  const colors = PALETTES[settings.visualizerPalette] ?? PALETTES.sunset
+  const ref = useRef(colors)
+  ref.current = colors
+  return { colors, ref }
 }
 
 function fitCanvas(c: HTMLCanvasElement): { g: CanvasRenderingContext2D; w: number; h: number; dpr: number } | null {
@@ -158,51 +172,66 @@ function clearCanvas(c: HTMLCanvasElement | null): void {
   c?.getContext('2d')?.clearRect(0, 0, c.width, c.height)
 }
 
-/** Four bouncing bars — the "now playing" icon in the header. */
+/** Band for the i-th of n bars laid out symmetrically: bass in the middle, highs at both edges. */
+function centredBand(i: number, n: number): number {
+  const half = (n - 1) / 2
+  const k = Math.abs(i - half) / Math.max(1, half) // 0 in the centre → 1 at the edges
+  return Math.min(BINS - 1, Math.floor(k * BINS * 0.92))
+}
+
+/** Four bars growing from their middle — the "now playing" icon in the header. */
 export function Equalizer({ active }: { active: boolean }): ReactNode {
   const ref = useRef<HTMLSpanElement>(null)
-  const bands = [1, 5, 11, 20]
+  const { colors } = usePalette()
+  const bands = [9, 1, 3, 14]
   useVisualizer(active, (a) => {
     Array.from(ref.current?.children ?? []).forEach((bar, i) => {
-      ;(bar as HTMLElement).style.transform = `scaleY(${(0.18 + a.bins[bands[i]] * 0.82).toFixed(3)})`
+      ;(bar as HTMLElement).style.transform = `scaleY(${(0.2 + a.bins[bands[i]] * 0.8).toFixed(3)})`
     })
   })
   useEffect(() => {
     if (active) return
-    for (const bar of Array.from(ref.current?.children ?? [])) (bar as HTMLElement).style.transform = 'scaleY(0.25)'
+    for (const bar of Array.from(ref.current?.children ?? [])) (bar as HTMLElement).style.transform = 'scaleY(0.3)'
   }, [active])
+  const barColors = [colors[0], colors[2], colors[2], colors[0]]
   return (
     <span ref={ref} className="eq" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-      <span />
+      {barColors.map((c, i) => (
+        <span key={i} style={{ background: `linear-gradient(${colors[1]}, ${c})` }} />
+      ))}
     </span>
   )
 }
 
-/** A row of spectrum bars growing from the bottom. */
+/** A symmetric spectrum: bars grow up and down from the middle line, bass in the centre. */
 export function Spectrum({ active, bars = 32, className }: { active: boolean; bars?: number; className?: string }): ReactNode {
   const ref = useRef<HTMLCanvasElement>(null)
-  const color = useRef('#3fb950')
+  const palette = usePalette().ref
   useEffect(() => {
-    color.current = successColor()
     if (!active) clearCanvas(ref.current)
   }, [active])
   useVisualizer(active, (a) => {
     const fit = ref.current && fitCanvas(ref.current)
     if (!fit) return
     const { g, w, h, dpr } = fit
+    const [edge, mid, centre] = palette.current
     g.clearRect(0, 0, w, h)
-    g.fillStyle = color.current
+    const grad = g.createLinearGradient(0, 0, w, 0)
+    grad.addColorStop(0, edge)
+    grad.addColorStop(0.25, mid)
+    grad.addColorStop(0.5, centre)
+    grad.addColorStop(0.75, mid)
+    grad.addColorStop(1, edge)
+    g.fillStyle = grad
     const gap = Math.max(1, 2 * dpr)
     const bw = (w - gap * (bars - 1)) / bars
+    const cy = h / 2
     for (let i = 0; i < bars; i++) {
-      const v = a.bins[Math.min(BINS - 1, Math.floor((i * BINS) / bars))]
+      const v = a.bins[centredBand(i, bars)]
       const bh = Math.max(2 * dpr, v * h)
-      g.globalAlpha = 0.3 + v * 0.7
+      g.globalAlpha = 0.35 + v * 0.65
       g.beginPath()
-      g.roundRect(i * (bw + gap), h - bh, bw, bh, Math.min(bw / 2, 3 * dpr))
+      g.roundRect(i * (bw + gap), cy - bh / 2, bw, bh, Math.min(bw / 2, 3 * dpr))
       g.fill()
     }
     g.globalAlpha = 1
@@ -210,15 +239,20 @@ export function Spectrum({ active, bars = 32, className }: { active: boolean; ba
   return <canvas ref={ref} className={className} aria-hidden="true" />
 }
 
-/** Makes its content breathe with the bass: a slight scale and a green glow. */
+/** Makes its content breathe with the bass: a slight scale and a coloured glow. */
 export function PulseArt({ active, children, className }: { active: boolean; children: ReactNode; className?: string }): ReactNode {
   const ref = useRef<HTMLDivElement>(null)
+  const { colors } = usePalette()
   useVisualizer(active, (a) => ref.current?.style.setProperty('--pulse', a.level.toFixed(3)))
   useEffect(() => {
     if (!active) ref.current?.style.setProperty('--pulse', '0')
   }, [active])
   return (
-    <div ref={ref} className={`pulse-art${className ? ` ${className}` : ''}`}>
+    <div
+      ref={ref}
+      className={`pulse-art${className ? ` ${className}` : ''}`}
+      style={{ '--viz-a': colors[1], '--viz-b': colors[0] } as CSSProperties}
+    >
       {children}
     </div>
   )
@@ -227,22 +261,28 @@ export function PulseArt({ active, children, className }: { active: boolean; chi
 /** Rays of the spectrum around a round cover — the big visual on the Music tab. */
 export function RadialVisualizer({ active, cover, title, size = 200 }: { active: boolean; cover: string | null; title: string; size?: number }): ReactNode {
   const ref = useRef<HTMLCanvasElement>(null)
-  const color = useRef('#3fb950')
+  const palette = usePalette().ref
   useEffect(() => {
-    color.current = successColor()
     if (!active) clearCanvas(ref.current)
   }, [active])
   useVisualizer(active, (a) => {
     const fit = ref.current && fitCanvas(ref.current)
     if (!fit) return
     const { g, w, h, dpr } = fit
+    const [edge, mid, centre] = palette.current
     g.clearRect(0, 0, w, h)
     const cx = w / 2
     const cy = h / 2
     const r0 = Math.min(w, h) * 0.34
     const maxLen = Math.min(w, h) * 0.15
     const rays = 72
-    g.strokeStyle = color.current
+    const grad = g.createConicGradient(-Math.PI / 2, cx, cy)
+    grad.addColorStop(0, centre)
+    grad.addColorStop(0.25, mid)
+    grad.addColorStop(0.5, edge)
+    grad.addColorStop(0.75, mid)
+    grad.addColorStop(1, centre)
+    g.strokeStyle = grad
     g.lineCap = 'round'
     g.lineWidth = Math.max(2, ((2 * Math.PI * r0) / rays) * 0.42)
     for (let i = 0; i < rays; i++) {
@@ -251,13 +291,13 @@ export function RadialVisualizer({ active, cover, title, size = 200 }: { active:
       const v = a.bins[Math.min(BINS - 1, Math.floor((k * BINS) / (rays / 2)))]
       const angle = (i / rays) * Math.PI * 2 - Math.PI / 2
       const len = 3 * dpr + v * maxLen
-      g.globalAlpha = 0.3 + v * 0.7
+      g.globalAlpha = 0.35 + v * 0.65
       g.beginPath()
       g.moveTo(cx + Math.cos(angle) * r0, cy + Math.sin(angle) * r0)
       g.lineTo(cx + Math.cos(angle) * (r0 + len), cy + Math.sin(angle) * (r0 + len))
       g.stroke()
     }
-    g.globalAlpha = 0.2 + a.level * 0.6
+    g.globalAlpha = 0.25 + a.level * 0.6
     g.lineWidth = 2 * dpr
     g.beginPath()
     g.arc(cx, cy, r0 - 5 * dpr, 0, Math.PI * 2)

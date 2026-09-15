@@ -1896,10 +1896,10 @@ body {
 
 .eq {
   display: inline-flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 2px;
   width: 14px;
-  height: 12px;
+  height: 14px;
   flex: none;
 }
 .eq > span {
@@ -1907,21 +1907,31 @@ body {
   width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: var(--fgColor-success);
-  transform: scaleY(0.25);
-  transform-origin: bottom;
+  transform: scaleY(0.3);
+  transform-origin: center;
 }
 .pulse-art {
+  /* flex, not inline: an inline picture leaves a strip of empty space under it */
+  display: flex;
   flex: none;
-  border-radius: 10px;
+  line-height: 0;
+  border-radius: 8px;
   transform: scale(calc(1 + var(--pulse, 0) * 0.08));
-  box-shadow: 0 0 calc(var(--pulse, 0) * 26px) calc(var(--pulse, 0) * 5px) color-mix(in srgb, var(--fgColor-success) 55%, transparent);
+  box-shadow:
+    0 0 calc(var(--pulse, 0) * 18px) calc(var(--pulse, 0) * 3px) color-mix(in srgb, var(--viz-a, #db61a2) 65%, transparent),
+    0 0 calc(var(--pulse, 0) * 42px) calc(var(--pulse, 0) * 8px) color-mix(in srgb, var(--viz-b, #8957e5) 40%, transparent);
   transition: transform 60ms linear;
+}
+.pulse-art > * {
+  display: block;
+}
+.player-bar .pulse-art {
+  border-radius: 6px;
 }
 .presence-spectrum {
   display: block;
   width: 100%;
-  height: 34px;
+  height: 40px;
 }
 .presence-controls {
   display: flex;

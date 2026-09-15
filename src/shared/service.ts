@@ -118,7 +118,8 @@ export function defaultSettings(language: T.Lang): T.Settings {
     reminders: true,
     remindBeforeMin: 5,
     musicFolders: [],
-    visualizer: true
+    visualizer: true,
+    visualizerPalette: 'sunset'
   }
 }
 

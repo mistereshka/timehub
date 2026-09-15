@@ -764,6 +764,11 @@ export const ru: Record<MessageKey, string> = {
     'Всё считается на этом компьютере — по заголовкам окон и отметкам Windows о том, какое приложение включало микрофон. Сами разговоры и сообщения не читаются.',
   'settings.music': 'Музыка',
   'settings.visualizer': 'Анимация под музыку',
+  'settings.visualizerPalette': 'Цвета',
+  'settings.palette.sunset': 'Закат — от фиолетового к красному',
+  'settings.palette.purple': 'Фиолетовый',
+  'settings.palette.red': 'Красный',
+  'settings.palette.green': 'Зелёный GitHub',
   'settings.visualizerHint':
     'Эквалайзер в шапке, пульсирующая обложка и спектр в плеере и на вкладке «Музыка». Звук компьютера только анализируется для графики — ничего не записывается и не сохраняется.'
 }

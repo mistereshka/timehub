@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { Button, Checkbox, Flash, Label, SegmentedControl, Select } from '@primer/react'
 import { BellIcon, DownloadIcon, FileDirectoryIcon, MarkGithubIcon } from '@primer/octicons-react'
 import { Link } from 'react-router'
-import type { ThemeSetting } from '@shared/types'
+import type { ThemeSetting, VisualizerPalette } from '@shared/types'
 import { api } from '../api'
 import { useApp } from '../context'
 import { useAction } from '../hooks'
@@ -13,6 +13,7 @@ const THEMES: ThemeSetting[] = ['system', 'light', 'dark', 'dark_dimmed']
 const POLL_SECONDS = [2, 5, 10, 15, 30]
 const IDLE_MINUTES = [1, 2, 3, 5, 10, 15, 30]
 const REMIND_MINUTES = [0, 5, 10, 15, 30]
+const PALETTES: VisualizerPalette[] = ['sunset', 'purple', 'red', 'green']
 const REPO_URL = 'https://github.com/mistereshka/timehub'
 
 export function SettingsPage(): ReactNode {
@@ -132,6 +133,19 @@ export function SettingsPage(): ReactNode {
         title={t('settings.visualizer')}
         hint={t('settings.visualizerHint')}
       />
+      <SettingRow title={t('settings.visualizerPalette')}>
+        <Select
+          value={settings.visualizerPalette}
+          disabled={!settings.visualizer}
+          onChange={(e) => void updateSettings({ visualizerPalette: e.target.value as VisualizerPalette })}
+        >
+          {PALETTES.map((p) => (
+            <Select.Option key={p} value={p}>
+              {t(`settings.palette.${p}` as MessageKey)}
+            </Select.Option>
+          ))}
+        </Select>
+      </SettingRow>
 
       <h2 className="subhead">{t('settings.data')}</h2>
       <p className="muted">{t('settings.dataHint')}</p>

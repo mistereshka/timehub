@@ -25,7 +25,11 @@ export interface Settings {
   musicFolders: string[]
   /** Visuals that move with the music (listens to system audio while on; nothing is recorded) */
   visualizer: boolean
+  visualizerPalette: VisualizerPalette
 }
+
+/** Colours of the music visuals: purple→red, or a single hue. */
+export type VisualizerPalette = 'sunset' | 'purple' | 'red' | 'green'
 
 export interface Project {
   id: ID

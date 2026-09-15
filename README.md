@@ -46,7 +46,7 @@
 
 ## Установка
 
-Скачайте `timehub-Setup-*.exe` из [Releases](https://github.com/mistereshka/timehub/releases) — сейчас это пре-релиз **v0.1.0** для Windows 10/11. Установщик не подписан, поэтому Windows SmartScreen может предупредить: нажмите «Подробнее» → «Выполнить в любом случае».
+Скачайте `timehub-Setup-*.exe` из [Releases](https://github.com/mistereshka/timehub/releases) — сейчас это пре-релиз **v0.2.0** для Windows 10/11. Установщик не подписан, поэтому Windows SmartScreen может предупредить: нажмите «Подробнее» → «Выполнить в любом случае».
 
 Или соберите из исходников (нужен [Node.js 24](https://nodejs.org)):
 
@@ -114,7 +114,7 @@ timehub is a GitHub-styled desktop app for Windows:
 - connections: Steam, Roblox, Epic, Windows media, Spotify, Discord Rich Presence, TMDB, GitHub, iCal calendars.
 
 All data stays on your machine in SQLite. The UI is available in Russian and English (switch in Settings).
-Download the installer from [Releases](https://github.com/mistereshka/timehub/releases) (v0.1.0 is a pre-release; the installer isn't code-signed, so SmartScreen may ask you to confirm), or run `npm install && npm run dev`, or try `npm run dev:web` for an in-browser demo with sample data.
+Download the installer from [Releases](https://github.com/mistereshka/timehub/releases) (v0.2.0 is a pre-release; the installer isn't code-signed, so SmartScreen may ask you to confirm), or run `npm install && npm run dev`, or try `npm run dev:web` for an in-browser demo with sample data.
 
 ## Лицензия
 

@@ -762,6 +762,11 @@ export const en = {
     'Everything is counted on this PC from window titles and Windows’ own note of which app used the microphone. Conversations and messages themselves are never read.',
   'settings.music': 'Music',
   'settings.visualizer': 'Move with the music',
+  'settings.visualizerPalette': 'Colours',
+  'settings.palette.sunset': 'Sunset — purple to red',
+  'settings.palette.purple': 'Purple',
+  'settings.palette.red': 'Red',
+  'settings.palette.green': 'GitHub green',
   'settings.visualizerHint':
     'An equalizer in the header, a pulsing cover and a spectrum in the player and on the Music tab. It listens to what the PC plays only to draw it — nothing is recorded or saved.'
 }

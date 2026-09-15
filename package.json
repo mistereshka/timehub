@@ -1,6 +1,6 @@
 {
   "name": "timehub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tasks, time tracking and an automatic daily activity timeline for Windows — in GitHub style",
   "main": "./out/main/index.js",
   "author": "mistereshka",
