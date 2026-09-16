@@ -221,6 +221,9 @@ export class MinecraftService {
     const instances: MinecraftInstance[] = all.map((i) => {
       const app = apps.get(i.id.toLowerCase())
       const t = app ? totals.get(app.id) : undefined
+      // keep the app's name in step with the instance, unless it was renamed by hand
+      const name = `Minecraft ${labels.get(i.id)}`
+      if (app && app.displayName !== name && app.displayName.startsWith('Minecraft ')) this.service.updateApp(app.id, { displayName: name })
       return {
         id: i.id,
         name: i.name,

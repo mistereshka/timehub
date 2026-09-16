@@ -58,12 +58,26 @@ export function packInfo(pack: unknown): PackInfo {
   return { mcVersion: version('net.minecraft'), loader: loader?.[1] ?? null, loaderVersion: loader ? version(loader[0]) : null }
 }
 
-/** "1.20.1 · Forge"; instances that would look the same also get their folder name. */
+/**
+ * "1.20.1 · Forge"; instances that would look the same also get what tells their folders apart —
+ * Prism names copies "1.20.1(2)", so that one becomes "1.20.1 · Forge (2)".
+ */
 export function instanceLabels(list: { id: string; name: string; loader: string | null }[]): Map<string, string> {
-  const base = (i: { id: string; name: string; loader: string | null }): string => `${i.name || i.id} · ${i.loader ?? 'Vanilla'}`
+  type Item = { id: string; name: string; loader: string | null }
+  const base = (i: Item): string => `${i.name || i.id} · ${i.loader ?? 'Vanilla'}`
+  const tag = (i: Item): string => {
+    if (!i.name || !i.id.startsWith(i.name)) return i.id
+    return i.id.slice(i.name.length).replace(/^[\s(_-]+|[\s)]+$/g, '')
+  }
   const counts = new Map<string, number>()
   for (const i of list) counts.set(base(i), (counts.get(base(i)) ?? 0) + 1)
-  return new Map(list.map((i) => [i.id, (counts.get(base(i)) ?? 0) > 1 ? `${base(i)} (${i.id})` : base(i)]))
+  return new Map(
+    list.map((i) => {
+      if ((counts.get(base(i)) ?? 0) < 2) return [i.id, base(i)]
+      const suffix = tag(i)
+      return [i.id, suffix ? `${base(i)} (${suffix})` : base(i)]
+    })
+  )
 }
 
 /** One launch of an instance, as its logs tell it. */

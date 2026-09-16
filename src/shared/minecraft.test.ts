@@ -37,14 +37,17 @@ describe('minecraft', () => {
 
   it('tells apart instances that share a name', () => {
     const labels = instanceLabels([
-      { id: '1.21.1(1)', name: '1.21.1', loader: 'NeoForge' },
+      { id: '1.21.1', name: '1.21.1', loader: 'NeoForge' },
       { id: '1.21.1(2)', name: '1.21.1', loader: 'NeoForge' },
+      { id: 'my pack', name: '1.21.1', loader: 'NeoForge' },
       { id: '1.20.1(2)', name: '1.20.1', loader: 'Forge' },
       { id: '1.20.1', name: '1.20.1', loader: null }
     ])
     expect(labels.get('1.20.1(2)')).toBe('1.20.1 · Forge')
     expect(labels.get('1.20.1')).toBe('1.20.1 · Vanilla')
-    expect(labels.get('1.21.1(2)')).toBe('1.21.1 · NeoForge (1.21.1(2))')
+    expect(labels.get('1.21.1(2)')).toBe('1.21.1 · NeoForge (2)')
+    expect(labels.get('1.21.1')).toBe('1.21.1 · NeoForge')
+    expect(labels.get('my pack')).toBe('1.21.1 · NeoForge (my pack)')
   })
 
   it('dates runs from their logs', () => {
