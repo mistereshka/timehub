@@ -4,7 +4,7 @@ import { transaction } from '@shared/sql'
 import { MINUTE, startOfDayMs, todayKey } from '@shared/time'
 import type {
   ChangeTopic, ConnectionKey, ConnectionStatus, DotaMatch, DotaStats, GamePresence, InstalledGame, Lang, LibraryKind, LibrarySearchResult,
-  MediaPresence, TrackerStatus
+  MediaPresence, MinecraftOverview, TrackerStatus
 } from '@shared/types'
 import { version } from '../../../../package.json'
 import { DEMO_ACTIVITY, DEMO_CALENDAR, DEMO_GAME, DEMO_TRACKS, artDataUrl, seedDemo } from './seed'
@@ -172,6 +172,9 @@ export async function createDemoApi(): Promise<TimehubApi> {
     mediaControl: () => {},
     listGames: () => demoGames(gameAppId),
     launchGame: () => {},
+    listMinecraft: () => demoMinecraft(),
+    launchMinecraft: () => {},
+    openMinecraftFolder: () => {},
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
@@ -202,6 +205,32 @@ function demoGames(gameAppId: number): InstalledGame[] {
     { id: 'battlenet:Hearthstone', name: 'Hearthstone', platform: 'battlenet', cover: null, icon: null, appId: null, trackedMs: 0, lastPlayed: now - 5 * 86_400_000, platformMinutes: null },
     { id: 'epic:Fortnite', name: 'Fortnite', platform: 'epic', cover: null, icon: null, appId: null, trackedMs: 0, lastPlayed: null, platformMinutes: null }
   ]
+}
+
+/** Prism Launcher instances for the demo's Minecraft tab. */
+function demoMinecraft(): MinecraftOverview {
+  const now = Date.now()
+  const h = 3_600_000
+  const base = { icon: null, appId: null, running: false }
+  return {
+    found: true,
+    canLaunch: true,
+    other: null,
+    instances: [
+      {
+        ...base, id: 'Create Above and Beyond', name: 'Create: Above and Beyond', label: 'Create: Above and Beyond · Forge', mcVersion: '1.18.2',
+        loader: 'Forge', loaderVersion: '40.2.0', modCount: 187, prismMs: 42 * h, lastLaunch: now - 5 * h, trackedMs: 11 * h, lastPlayed: now - 3 * h
+      },
+      {
+        ...base, id: 'Fabulously Optimized', name: 'Fabulously Optimized', label: 'Fabulously Optimized · Fabric', mcVersion: '1.21.1',
+        loader: 'Fabric', loaderVersion: '0.16.5', modCount: 64, prismMs: 9 * h, lastLaunch: now - 96 * h, trackedMs: 2 * h, lastPlayed: now - 96 * h
+      },
+      {
+        ...base, id: '1.21.1', name: '1.21.1', label: '1.21.1 · Vanilla', mcVersion: '1.21.1', loader: null, loaderVersion: null, modCount: 0,
+        prismMs: 40 * 60_000, lastLaunch: now - 720 * h, trackedMs: 0, lastPlayed: null
+      }
+    ]
+  }
 }
 
 /** Sample Dota 2 stats for the demo (hero art comes from Valve's CDN). */

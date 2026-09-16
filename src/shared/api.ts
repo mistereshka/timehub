@@ -59,12 +59,17 @@ export interface HostApi {
   /** Installed games from Steam, Epic, Battle.net and the tracker. */
   listGames(): import('./types').InstalledGame[]
   launchGame(id: string): void
+  /** Minecraft instances from Prism Launcher with the time played in each. */
+  listMinecraft(): import('./types').MinecraftOverview
+  /** Starts an instance through Prism Launcher. */
+  launchMinecraft(id: string): void
+  openMinecraftFolder(id: string): void
 }
 export const HOST_METHODS = [
   'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
   'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
   'getSpotifyOverview', 'searchLibrary', 'testReminder', 'getDotaStats', 'scanMusic', 'addMusicFolder', 'mediaControl', 'listGames',
-  'launchGame'
+  'launchGame', 'listMinecraft', 'launchMinecraft', 'openMinecraftFolder'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

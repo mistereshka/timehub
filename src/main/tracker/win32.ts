@@ -120,19 +120,48 @@ const IsWindowVisible = user32.func('bool __stdcall IsWindowVisible(void *hWnd)'
 const GetWindowTextLengthW = user32.func('int __stdcall GetWindowTextLengthW(void *hWnd)')
 
 /**
- * Processes that own a visible, titled top-level window. Used to tell a game
- * that is actually open from one idling in the tray (e.g. Roblox).
+ * Processes that own a visible, titled top-level window, with that window's title. Used to tell a
+ * game that is actually open from one idling in the tray (e.g. Roblox), and Minecraft from other Java.
  */
-export function visibleWindowPids(): Set<number> {
-  const pids = new Set<number>()
+export function visibleWindowTitles(): Map<number, string> {
+  const titles = new Map<number, string>()
   EnumWindows(
     (hwnd: unknown) => {
-      if (IsWindowVisible(hwnd) && GetWindowTextLengthW(hwnd) > 0) pids.add(windowPid(hwnd))
+      if (IsWindowVisible(hwnd) && GetWindowTextLengthW(hwnd) > 0) {
+        const pid = windowPid(hwnd)
+        const title = windowTitle(hwnd)
+        // a game's own window wins over its splash or console windows
+        if (!titles.has(pid) || /^minecraft\b/i.test(title)) titles.set(pid, title)
+      }
       return true
     },
     0
   )
-  return pids
+  return titles
+}
+
+export function visibleWindowPids(): Set<number> {
+  return new Set(visibleWindowTitles().keys())
+}
+
+const GetProcessTimes = kernel32.func(
+  'bool __stdcall GetProcessTimes(void *hProcess, void *lpCreationTime, void *lpExitTime, void *lpKernelTime, void *lpUserTime)'
+)
+const fileTimes = [Buffer.alloc(8), Buffer.alloc(8), Buffer.alloc(8), Buffer.alloc(8)]
+/** 1601-01-01 → 1970-01-01 in milliseconds (FILETIME counts 100 ns steps from 1601). */
+const FILETIME_EPOCH_MS = 11_644_473_600_000n
+
+/** When a process started (ms since the epoch), or null if it can't be queried. */
+export function processStartTime(pid: number): number | null {
+  if (!pid) return null
+  const handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+  if (!handle) return null
+  try {
+    if (!GetProcessTimes(handle, fileTimes[0], fileTimes[1], fileTimes[2], fileTimes[3])) return null
+    return Number(fileTimes[0].readBigUInt64LE(0) / 10_000n - FILETIME_EPOCH_MS)
+  } finally {
+    CloseHandle(handle)
+  }
 }
 
 const descriptions = new Map<string, string | null>()

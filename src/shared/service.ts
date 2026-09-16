@@ -9,6 +9,7 @@ import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, pr
 import { detectSite, isBrowserExe } from './sites'
 import { parseChat } from './social'
 import { albumKey, primaryArtist } from './media'
+import { isJavaExe, isMinecraftWindow, type MinecraftMatch } from './minecraft'
 
 export interface ServiceOptions {
   now?: () => number
@@ -1973,6 +1974,33 @@ export class Service {
         }
       }
       this.writeSetting('_sitesSplit', 1)
+    })
+    if (moved) {
+      this.notify('meta')
+      this.notify('activity')
+    }
+    return moved
+  }
+
+  /**
+   * Runs once: Minecraft played before timehub knew it — a java(w).exe window titled "Minecraft…",
+   * filed as "OpenJDK Platform binary" — moves to the instance it was (or to plain Minecraft).
+   */
+  splitMinecraftSessions(resolve: (at: number) => MinecraftMatch): number {
+    if (this.readSetting('_minecraftSplit')) return 0
+    let moved = 0
+    transaction(this.db, () => {
+      const javas = (this.db.all('SELECT id, exe_name FROM apps') as { id: T.ID; exe_name: string }[]).filter((a) => isJavaExe(a.exe_name))
+      for (const java of javas) {
+        for (const s of this.db.all(`SELECT id, title, start_ms FROM activity_sessions WHERE app_id = ? AND title <> ''`, [java.id])) {
+          if (!isMinecraftWindow(java.exe_name, String(s.title))) continue
+          const mc = resolve(Number(s.start_ms))
+          const { app } = this.ensureApp(mc.exePath, 'minecraft', mc.name, 'games')
+          this.db.run('UPDATE activity_sessions SET app_id = ? WHERE id = ?', [app.id, s.id])
+          moved++
+        }
+      }
+      this.writeSetting('_minecraftSplit', 1)
     })
     if (moved) {
       this.notify('meta')

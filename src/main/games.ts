@@ -7,6 +7,7 @@ import type { AppInfo, InstalledGame } from '@shared/types'
 import type { BattleNetConnector } from './integrations/battlenet'
 import type { EpicConnector } from './integrations/epic'
 import { steamCapsule, type SteamConnector } from './integrations/steam'
+import type { MinecraftService } from './minecraft'
 
 /** Battle.net product codes for `Battle.net.exe --exec="launch <code>"`. */
 const BNET_CODES: [RegExp, string][] = [
@@ -25,7 +26,8 @@ export class GamesService {
     private readonly service: Service,
     private readonly steam: () => SteamConnector,
     private readonly epic: () => EpicConnector,
-    private readonly bnet: () => BattleNetConnector
+    private readonly bnet: () => BattleNetConnector,
+    private readonly minecraft: MinecraftService
   ) {}
 
   list(): InstalledGame[] {
@@ -77,6 +79,17 @@ export class GamesService {
           ? { kind: 'exe', path: launcher, args: [`--exec=launch ${code}`] }
           : { kind: 'exe', path: app?.exePath ?? launcher ?? '', args: [] }
       add({ id: `battlenet:${g.key}`, name: g.name, platform: 'battlenet', cover: null, platformMinutes: null, ...stats(app) }, launch)
+    }
+    // Minecraft instances from Prism Launcher, each on its own (they have their own tab too)
+    const prism = this.minecraft.launcherPath()
+    for (const i of this.minecraft.overview().instances) {
+      add(
+        {
+          id: `minecraft:${i.id}`, name: `Minecraft ${i.label}`, platform: 'minecraft', cover: null, icon: i.icon, appId: i.appId,
+          trackedMs: i.trackedMs, lastPlayed: Math.max(i.lastLaunch ?? 0, i.lastPlayed ?? 0) || null, platformMinutes: Math.round(i.prismMs / 60_000)
+        },
+        { kind: 'exe', path: prism ?? '', args: ['--launch', i.id] }
+      )
     }
     const covered = new Set(out.map((g) => g.appId).filter((id) => id != null))
     for (const app of apps) {

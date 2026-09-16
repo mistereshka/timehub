@@ -25,6 +25,7 @@ import { NewDeafConnector, newDeafBase } from './integrations/newdeaf'
 import { DotaService } from './integrations/dota'
 import { MEDIA_SCHEME, MusicLibrary } from './music/library'
 import { GamesService } from './games'
+import { MinecraftService } from './minecraft'
 import { CallTracker } from './calls'
 import { PresenceService } from './integrations/presence'
 import { Reminders } from './reminders'
@@ -87,7 +88,14 @@ async function main(): Promise<void> {
   service.forgetApps({ paths: [process.execPath], names: ['timehub.exe'] })
   // Once: past browser time on known sites (YouTube…) moves from "Chrome" to those sites.
   service.splitBrowserSessionsBySite()
-  const tracker = new Tracker(service, () => broadcast('tracker'))
+  const minecraft: MinecraftService = new MinecraftService(service, (): string[] => tracker.getRunningGames().map((g) => g.exePath))
+  try {
+    // Minecraft filed as "OpenJDK Platform binary" before timehub knew better
+    service.splitMinecraftSessions(minecraft.resolverAt())
+  } catch (err) {
+    console.error('Minecraft history split failed:', err)
+  }
+  const tracker: Tracker = new Tracker(service, () => broadcast('tracker'), (startedAt) => minecraft.forProcess(startedAt))
   // Calls in Telegram, Discord…: a messenger holding the microphone.
   const calls = new CallTracker(service, () => tracker.runningPaths(), () => broadcast('tracker'))
   every(15_000, () => void calls.poll(), true)
@@ -126,7 +134,8 @@ async function main(): Promise<void> {
     service,
     () => connections.get<SteamConnector>('steam'),
     () => connections.get<EpicConnector>('epic'),
-    () => connections.get<BattleNetConnector>('battlenet')
+    () => connections.get<BattleNetConnector>('battlenet'),
+    minecraft
   )
   const trackerStatus = (): TrackerStatus => {
     const s = tracker.getStatus()
@@ -200,7 +209,10 @@ async function main(): Promise<void> {
     },
     mediaControl: (action) => media.control(action),
     listGames: () => games.list(),
-    launchGame: (id) => games.launch(id)
+    launchGame: (id) => games.launch(id),
+    listMinecraft: () => minecraft.overview(),
+    launchMinecraft: (id) => minecraft.launch(id),
+    openMinecraftFolder: (id) => minecraft.openFolder(id)
   }
   registerIpc(service, host)
 

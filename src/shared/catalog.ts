@@ -1,4 +1,5 @@
 import type { Lang } from './types'
+import { MINECRAFT_PREFIX } from './minecraft'
 
 export type CategoryKey = 'dev' | 'work' | 'browser' | 'social' | 'media' | 'games' | 'other'
 
@@ -89,6 +90,8 @@ const NOT_A_GAME =
   /crash|report|updat|launcher|helper|service|install|setup|uninst|anti-?cheat|battleye|bootstrap|redist|overlay|prereq/i
 
 export function looksLikeGame(exeName: string, exePath: string): boolean {
+  // a Minecraft instance (see minecraft.ts) is a game, whatever Java runs it
+  if (exePath.toLowerCase().startsWith(MINECRAFT_PREFIX)) return true
   const exe = exeName.toLowerCase()
   if (LAUNCHERS.has(exe)) return false
   if (GAME_EXES.has(exe)) return true

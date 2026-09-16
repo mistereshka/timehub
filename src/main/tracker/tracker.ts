@@ -4,6 +4,7 @@ import type { ActivitySample, Service } from '@shared/service'
 import type { GamePresence, ID, TrackerState, TrackerStatus } from '@shared/types'
 import { looksLikeGame } from '@shared/catalog'
 import { detectSite, isBrowserExe } from '@shared/sites'
+import { MINECRAFT_PREFIX, isMinecraftWindow, minecraftInstanceOf, type MinecraftMatch } from '@shared/minecraft'
 
 type Win32 = typeof import('./win32')
 
@@ -30,9 +31,13 @@ export class Tracker {
   private running: RunningGame[] = []
   private processPaths = new Set<string>()
 
+  private readonly minecraftByPid = new Map<number, MinecraftMatch>()
+
   constructor(
     private readonly service: Service,
-    private readonly onStatus: (status: TrackerStatus) => void
+    private readonly onStatus: (status: TrackerStatus) => void,
+    /** The Minecraft instance a game process runs, from when the process started */
+    private readonly resolveMinecraft?: (startedAt: number | null) => MinecraftMatch
   ) {}
 
   async start(): Promise<void> {
@@ -141,6 +146,22 @@ export class Tracker {
           }
         }
       }
+      // Minecraft runs inside Java: its window counts as the instance played, not as "OpenJDK Platform binary".
+      let minecraftIcon: string | null = null
+      if (!site && this.resolveMinecraft && isMinecraftWindow(fg.exeName, fg.title)) {
+        const java = this.service.ensureApp(fg.exePath, fg.exeName, displayName).app
+        if (!java.ignored) {
+          const mc = this.minecraftFor(fg.pid)
+          minecraftIcon = mc.icon
+          sample = {
+            exePath: mc.exePath,
+            exeName: 'minecraft',
+            title: java.recordTitles ? fg.title : '',
+            displayName: mc.name,
+            categoryKey: 'games'
+          }
+        }
+      }
       const result = this.service.recordSample(
         { at: Date.now(), ...sample, idleMs: powerMonitor.getSystemIdleTime() * 1000 },
         { intervalMs: settings.pollIntervalSec * 1000, idleThresholdMs: settings.idleThresholdMin * 60_000 }
@@ -149,6 +170,7 @@ export class Tracker {
         const a = result.app
         if (!a.icon) {
           if (a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
+          else if (minecraftInstanceOf(a.exePath) != null) this.loadMinecraftIcon(a.id, minecraftIcon)
           else if (fg.exePath) this.loadIcon(a.id, fg.exePath)
         }
         this.setStatus({
@@ -172,10 +194,10 @@ export class Tracker {
       return
     }
     let processes: { pid: number; path: string }[]
-    let visible: Set<number>
+    let titles: Map<number, string>
     try {
       processes = w.listProcesses()
-      visible = w.visibleWindowPids()
+      titles = w.visibleWindowTitles()
       this.processPaths = new Set(processes.map((p) => p.path.toLowerCase()))
     } catch (err) {
       console.error('Process scan failed:', err)
@@ -192,35 +214,71 @@ export class Tracker {
     const games: GamePresence[] = []
     const seen = new Set<string>()
     for (const { pid, path } of processes) {
-      const key = path.toLowerCase()
       // A game counts only while it has a window — not when it idles in the tray.
-      if (seen.has(key) || !visible.has(pid)) continue
-      let info = flagged.get(key)
+      const title = titles.get(pid)
+      if (title == null) continue
+      const exeName = winPath.basename(path)
+      let exePath = path
+      let info = flagged.get(path.toLowerCase())
+      let minecraft: MinecraftMatch | null = null
+      if (this.resolveMinecraft && isMinecraftWindow(exeName, title)) {
+        minecraft = this.minecraftFor(pid)
+        exePath = minecraft.exePath
+        info = this.service.ensureApp(exePath, 'minecraft', minecraft.name, 'games').app
+      }
+      const key = exePath.toLowerCase()
+      if (seen.has(key)) continue
       if (!info) {
-        const exeName = winPath.basename(path)
         if (!looksLikeGame(exeName, path)) continue
         info = this.service.ensureApp(path, exeName, w.fileDescription(path) ?? undefined).app
-        if (!info.isGame) continue // the user un-flagged it
       }
+      if (!info.isGame) continue // the user un-flagged it
       if (info.ignored) continue
       seen.add(key)
       if (!this.gamesSince.has(key)) this.gamesSince.set(key, now)
       const since = this.gamesSince.get(key)!
-      running.push({ appId: info.id, exePath: path, since })
+      running.push({ appId: info.id, exePath, since })
       games.push({
         appId: info.id, displayName: info.displayName, icon: info.icon, since, provider: null, details: null, imageUrl: null,
         playersOnline: null, storeUrl: null, totalMs: 0, todayMs: 0, streak: 0, platformPlaytimeMin: null
       })
-      if (!info.icon) this.loadIcon(info.id, path)
+      if (!info.icon) {
+        if (minecraft) this.loadMinecraftIcon(info.id, minecraft.icon)
+        else this.loadIcon(info.id, path)
+      }
     }
     for (const key of [...this.gamesSince.keys()]) if (!seen.has(key)) this.gamesSince.delete(key)
     this.running = running
     this.setStatus({ games })
   }
 
-  /** Favicons for sites split out of the browser history. */
+  /** The instance a Minecraft process runs — asked once per process, once it's known. */
+  private minecraftFor(pid: number): MinecraftMatch {
+    const known = this.minecraftByPid.get(pid)
+    if (known) return known
+    const match = this.resolveMinecraft!(this.win32?.processStartTime(pid) ?? null)
+    if (match.exePath !== MINECRAFT_PREFIX) {
+      if (this.minecraftByPid.size > 16) this.minecraftByPid.clear()
+      this.minecraftByPid.set(pid, match)
+    }
+    return match
+  }
+
+  /** An instance's own icon, or Minecraft's. */
+  private loadMinecraftIcon(appId: ID, icon: string | null): void {
+    if (!icon) return this.loadSiteIcon(appId, 'minecraft.net')
+    if (this.iconRequested.has(appId)) return
+    this.iconRequested.add(appId)
+    this.service.setAppIcon(appId, icon)
+  }
+
+  /** Icons for apps made from history: sites split out of the browser, Minecraft out of Java. */
   ensureSiteIcons(): void {
-    for (const a of this.service.listApps()) if (!a.icon && a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
+    for (const a of this.service.listApps()) {
+      if (a.icon) continue
+      if (a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
+      else if (minecraftInstanceOf(a.exePath) != null) this.loadSiteIcon(a.id, 'minecraft.net')
+    }
   }
 
   private loadSiteIcon(appId: ID, domain: string): void {

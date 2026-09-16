@@ -25,6 +25,7 @@ import { AppReportPage } from './pages/AppReportPage'
 import { ConnectionsPage } from './pages/ConnectionsPage'
 import { MusicPage } from './pages/MusicPage'
 import { GamesPage } from './pages/GamesPage'
+import { MinecraftPage } from './pages/MinecraftPage'
 import { SocialPage } from './pages/SocialPage'
 import { MusicPlayerProvider, PlayerBar } from './components/MusicPlayer'
 
@@ -109,6 +110,7 @@ function Shell(): ReactNode {
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/music" element={<MusicPage />} />
           <Route path="/games" element={<GamesPage />} />
+          <Route path="/minecraft" element={<MinecraftPage />} />
           <Route path="/social" element={<SocialPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<NotFound />} />

@@ -512,7 +512,7 @@ export interface MusicCollection {
 }
 export type MediaAction = 'toggle' | 'next' | 'previous'
 
-export type GamePlatform = 'steam' | 'epic' | 'battlenet' | 'other'
+export type GamePlatform = 'steam' | 'epic' | 'battlenet' | 'minecraft' | 'other'
 /** Something installed that the Games tab can start. */
 export interface InstalledGame {
   id: string
@@ -526,6 +526,37 @@ export interface InstalledGame {
   lastPlayed: number | null
   /** Playtime the platform reports (Steam) */
   platformMinutes: number | null
+}
+
+/** A Prism Launcher instance (modpack) with the time played in it. */
+export interface MinecraftInstance {
+  /** Folder name — what `prismlauncher --launch` takes */
+  id: string
+  name: string
+  /** "1.20.1 · Forge", with the folder when two instances would look the same */
+  label: string
+  mcVersion: string | null
+  loader: string | null
+  loaderVersion: string | null
+  modCount: number
+  icon: string | null
+  /** Play time Prism counted — all of it, also from before timehub */
+  prismMs: number
+  lastLaunch: number | null
+  /** The tracked app, once timehub has seen the instance */
+  appId: ID | null
+  trackedMs: number
+  lastPlayed: number | null
+  running: boolean
+}
+export interface MinecraftOverview {
+  /** Prism Launcher's data folder exists */
+  found: boolean
+  /** prismlauncher.exe was found, so instances can be started */
+  canLaunch: boolean
+  instances: MinecraftInstance[]
+  /** Minecraft timehub saw without knowing the instance (other launchers, older history) */
+  other: { appId: ID; trackedMs: number; lastPlayed: number | null } | null
 }
 
 /** Dota 2 stats for a Steam account (from OpenDota, which reads Valve's match data). */

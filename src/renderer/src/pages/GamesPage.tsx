@@ -11,8 +11,8 @@ import { Blankslate, Cover, ErrorFlash } from '../components/common'
 
 type Filter = 'all' | GamePlatform
 type Sort = 'recent' | 'played' | 'name'
-const FILTERS: Filter[] = ['all', 'steam', 'epic', 'battlenet', 'other']
-const PLATFORM_NAME: Record<GamePlatform, string> = { steam: 'Steam', epic: 'Epic', battlenet: 'Battle.net', other: '' }
+const FILTERS: Filter[] = ['all', 'steam', 'epic', 'battlenet', 'minecraft', 'other']
+const PLATFORM_NAME: Record<GamePlatform, string> = { steam: 'Steam', epic: 'Epic', battlenet: 'Battle.net', minecraft: 'Minecraft', other: '' }
 
 const playedMs = (g: InstalledGame): number => Math.max(g.trackedMs, (g.platformMinutes ?? 0) * MINUTE)
 
@@ -96,7 +96,7 @@ export function GamesPage(): ReactNode {
                     ? t('games.never')
                     : g.trackedMs >= (g.platformMinutes ?? 0) * MINUTE
                       ? t('games.played', { time: duration(g.trackedMs) })
-                      : t('games.steamHours', { n: Math.round((g.platformMinutes ?? 0) / 60) })}
+                      : t(g.platform === 'minecraft' ? 'games.prismHours' : 'games.steamHours', { n: Math.round((g.platformMinutes ?? 0) / 60) })}
                 </div>
                 {g.lastPlayed != null && <div className="small muted">{t('games.last', { ago: ago(g.lastPlayed) })}</div>}
                 {g.appId != null && (
