@@ -92,6 +92,7 @@ async function main(): Promise<void> {
     service,
     (): string[] => tracker.getRunningGames().map((g) => g.exePath),
     join(dataPath, 'minecraft.json'),
+    join(dataPath, 'minecraft-icons'),
     () => broadcast('meta')
   )
   try {
@@ -237,7 +238,10 @@ async function main(): Promise<void> {
       minecraft.setIconFromFile(id, r.filePaths[0])
       return true
     },
-    clearMinecraftIcon: (id) => minecraft.clearIcon(id)
+    listMinecraftIcons: () => minecraft.iconChoices(),
+    setMinecraftIcon: (id, key) => minecraft.setIcon(id, key),
+    shuffleMinecraftIcon: (id) => minecraft.shuffleIcon(id),
+    openMinecraftIconFolder: () => minecraft.openIconFolder()
   }
   registerIpc(service, host)
 

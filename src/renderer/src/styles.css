@@ -613,6 +613,36 @@ button.pill {
   align-items: center;
   gap: 12px;
 }
+.mc-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+  max-height: 232px;
+  margin-top: 8px;
+  padding: 2px;
+  overflow-y: auto;
+}
+.mc-icon-choice {
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  line-height: 0;
+  cursor: pointer;
+}
+.mc-icon-choice img {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+.mc-icon-choice:hover {
+  border-color: var(--borderColor-default);
+}
+.mc-icon-choice.selected {
+  border-color: var(--borderColor-accent-emphasis);
+}
 .mc-icon-btn {
   flex: none;
   padding: 0;

@@ -1,14 +1,15 @@
 import { spawn } from 'node:child_process'
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, extname, isAbsolute, join } from 'node:path'
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { constants as zlibConstants, gunzipSync } from 'node:zlib'
 import { nativeImage, shell, type NativeImage } from 'electron'
 import {
   MINECRAFT_PREFIX, UNKNOWN_MINECRAFT, clockLogStart, debugLogStart, instanceAt, instanceForProcess, instanceLabels, isMinecraftLibraryItem,
   minecraftInstanceOf, packInfo, parseInstanceCfg, type GameRun, type MinecraftMatch, type PackInfo
 } from '@shared/minecraft'
+import { PIXEL_PREFIX, pixelIcon, pixelIcons } from '@shared/pixelIcons'
 import type { Service } from '@shared/service'
-import type { MinecraftArt, MinecraftInstance, MinecraftOverview } from '@shared/types'
+import type { MinecraftArt, MinecraftIconChoice, MinecraftInstance, MinecraftOverview } from '@shared/types'
 
 interface Instance extends PackInfo {
   id: string
@@ -24,8 +25,14 @@ interface Instance extends PackInfo {
 /** Your own name and icon for an instance — kept by timehub; Prism's files stay untouched. */
 interface Custom {
   name?: string
+  /** The icon you chose: "pixel:…", "file:…" (a picture in the icons folder) or a data: URL */
   icon?: string
+  /** The random icon an instance got when it had none */
+  auto?: string
 }
+
+/** Icons from the pictures folder are keyed by file name. */
+const OWN_PREFIX = 'file:'
 
 const ICON_TYPES: Record<string, string> = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.ico': 'image/x-icon', '.svg': 'image/svg+xml',
@@ -57,6 +64,16 @@ function firstLine(path: string): string {
   }
 }
 
+/** A picture file as a small icon (a PNG where Electron can read it, otherwise the file itself if it's small). */
+function imageToIcon(path: string): string {
+  const image = nativeImage.createFromPath(path)
+  if (!image.isEmpty()) return iconFromImage(image)
+  const type = ICON_TYPES[extname(path).toLowerCase()]
+  const buf = readFileSync(path)
+  if (!type || buf.length > 400_000) throw new Error('This picture can’t be used as an icon')
+  return `data:${type};base64,${buf.toString('base64')}`
+}
+
 /** A picture as a small PNG data: URL. */
 function iconFromImage(image: NativeImage): string {
   const { width, height } = image.getSize()
@@ -79,6 +96,8 @@ export class MinecraftService {
     private readonly runningGames: () => string[],
     /** where your names and icons are kept */
     private readonly file: string,
+    /** your own pictures to choose from */
+    private readonly iconDir: string,
     private readonly onChange: () => void
   ) {
     try {
@@ -260,22 +279,96 @@ export class MinecraftService {
     return this.customs[id.toLowerCase()] ?? {}
   }
 
+  private save(): void {
+    writeFileSync(this.file, JSON.stringify(this.customs, null, 2))
+  }
+
   private setCustom(id: string, patch: Custom): void {
     const next: Custom = { ...this.custom(id), ...patch }
-    if (!next.name) delete next.name
-    if (!next.icon) delete next.icon
-    if (next.name || next.icon) this.customs[id.toLowerCase()] = next
+    for (const key of ['name', 'icon', 'auto'] as const) if (!next[key]) delete next[key]
+    if (Object.keys(next).length) this.customs[id.toLowerCase()] = next
     else delete this.customs[id.toLowerCase()]
-    writeFileSync(this.file, JSON.stringify(this.customs, null, 2))
+    this.save()
     this.syncApps()
     this.onChange()
   }
 
+  private readonly ownCache = new Map<string, { mtime: number; url: string | null }>()
+
+  /** A picture from the icons folder as a small icon (made once per file version). */
+  private ownIcon(file: string): string | null {
+    const path = join(this.iconDir, basename(file))
+    let mtime: number
+    try {
+      mtime = statSync(path).mtimeMs
+    } catch {
+      return null
+    }
+    const cached = this.ownCache.get(file)
+    if (cached?.mtime === mtime) return cached.url
+    let url: string | null
+    try {
+      url = imageToIcon(path)
+    } catch {
+      url = null
+    }
+    this.ownCache.set(file, { mtime, url })
+    return url
+  }
+
+  /** Everything an instance's icon can be: the pixel set and your own pictures. */
+  iconChoices(): MinecraftIconChoice[] {
+    let files: string[] = []
+    try {
+      files = readdirSync(this.iconDir).filter((f) => ICON_TYPES[extname(f).toLowerCase()])
+    } catch {
+      files = []
+    }
+    const own: MinecraftIconChoice[] = []
+    for (const f of files.sort((a, b) => a.localeCompare(b))) {
+      const url = this.ownIcon(f)
+      if (url) own.push({ key: OWN_PREFIX + f, url, own: true })
+    }
+    return [...pixelIcons().map((i) => ({ ...i, own: false })), ...own]
+  }
+
+  private resolveIcon(value: string | undefined): string | null {
+    if (!value) return null
+    if (value.startsWith('data:')) return value
+    if (value.startsWith(PIXEL_PREFIX)) return pixelIcon(value)
+    if (value.startsWith(OWN_PREFIX)) return this.ownIcon(value.slice(OWN_PREFIX.length))
+    return null
+  }
+
+  /** An instance with no icon gets a random one from the choices — once; then it keeps it. */
+  private autoIcon(id: string): { key: string; url: string } | null {
+    const c = this.custom(id)
+    const kept = this.resolveIcon(c.auto)
+    if (c.auto && kept) return { key: c.auto, url: kept }
+    const pool = this.iconChoices()
+    if (!pool.length) return null
+    const choice = pool[Math.floor(Math.random() * pool.length)]
+    this.customs[id.toLowerCase()] = { ...c, auto: choice.key }
+    this.save()
+    return choice
+  }
+
   /** What an instance is called and wears everywhere in timehub. */
-  private appearance(i: Instance, labels: Map<string, string>): { label: string; appName: string; icon: string | null } {
+  private appearance(
+    i: Instance,
+    labels: Map<string, string>
+  ): { label: string; appName: string; icon: string | null; iconChoice: string | null } {
     const c = this.custom(i.id)
     const auto = labels.get(i.id) ?? i.name
-    return { label: c.name ?? auto, appName: c.name ?? `Minecraft ${auto}`, icon: c.icon ?? this.prismIcon(i.iconKey) ?? this.logo }
+    const chosen = this.resolveIcon(c.icon)
+    const prism = chosen ? null : this.prismIcon(i.iconKey)
+    const random = chosen || prism ? null : this.autoIcon(i.id)
+    return {
+      label: c.name ?? auto,
+      appName: c.name ?? `Minecraft ${auto}`,
+      icon: chosen ?? prism ?? random?.url ?? this.logo,
+      iconChoice: chosen ? (c.icon!.startsWith('data:') ? null : c.icon!) : (random?.key ?? null)
+    }
   }
 
   /** The apps made for instances follow the instances' names and icons (rename them here, not in Activity). */
@@ -347,6 +440,7 @@ export class MinecraftService {
         autoLabel: labels.get(i.id) ?? i.name,
         customName: !!custom.name,
         customIcon: !!custom.icon,
+        iconChoice: look.iconChoice,
         mcVersion: i.mcVersion,
         loader: i.loader,
         loaderVersion: i.loaderVersion,
@@ -384,23 +478,36 @@ export class MinecraftService {
     this.setCustom(this.find(id).id, { name: name?.trim().slice(0, 80) || undefined })
   }
 
-  /** Makes a picture from disk the instance's icon (shrunk to a small PNG where possible). */
-  setIconFromFile(id: string, path: string): void {
+  /** Chooses an icon ("pixel:…" / "file:…"); null goes back to the automatic one. */
+  setIcon(id: string, key: string | null): void {
     const instance = this.find(id)
-    const image = nativeImage.createFromPath(path)
-    let icon: string
-    if (!image.isEmpty()) icon = iconFromImage(image)
-    else {
-      const type = ICON_TYPES[extname(path).toLowerCase()]
-      const buf = readFileSync(path)
-      if (!type || buf.length > 400_000) throw new Error('This picture can’t be used as an icon')
-      icon = `data:${type};base64,${buf.toString('base64')}`
-    }
-    this.setCustom(instance.id, { icon })
+    if (key && !this.resolveIcon(key)) throw new Error('Icon not found')
+    this.setCustom(instance.id, { icon: key ?? undefined })
   }
 
-  clearIcon(id: string): void {
-    this.setCustom(this.find(id).id, { icon: undefined })
+  /** Another random icon from the choices. */
+  shuffleIcon(id: string): void {
+    const instance = this.find(id)
+    const c = this.custom(instance.id)
+    const pool = this.iconChoices().filter((choice) => choice.key !== (c.icon ?? c.auto))
+    if (pool.length) this.setCustom(instance.id, { icon: pool[Math.floor(Math.random() * pool.length)].key })
+  }
+
+  /** A picture from disk joins the icons folder (so it stays among the choices) and becomes the icon. */
+  setIconFromFile(id: string, path: string): void {
+    const instance = this.find(id)
+    imageToIcon(path) // refuses what can't be an icon before anything is copied
+    mkdirSync(this.iconDir, { recursive: true })
+    let name = basename(path)
+    const target = join(this.iconDir, name)
+    if (existsSync(target) && statSync(target).size !== statSync(path).size) name = `${Date.now()}-${name}`
+    copyFileSync(path, join(this.iconDir, name))
+    this.setCustom(instance.id, { icon: OWN_PREFIX + name })
+  }
+
+  openIconFolder(): void {
+    mkdirSync(this.iconDir, { recursive: true })
+    void shell.openPath(this.iconDir)
   }
 
   /** Starts an instance the way Prism's own "Launch" does (a running Prism takes the request over). */

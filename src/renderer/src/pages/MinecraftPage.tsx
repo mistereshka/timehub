@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { Button, Dialog, Label, TextInput } from '@primer/react'
-import { ArrowLeftIcon, ClockIcon, FileDirectoryIcon, GraphIcon, HistoryIcon, PackageIcon, PencilIcon, PlayIcon } from '@primer/octicons-react'
+import {
+  ArrowLeftIcon, ClockIcon, FileDirectoryIcon, GraphIcon, HistoryIcon, PackageIcon, PencilIcon, PlayIcon, SyncIcon, UploadIcon
+} from '@primer/octicons-react'
 import { Link, useNavigate } from 'react-router'
 import type { MinecraftInstance } from '@shared/types'
 import { api } from '../api'
@@ -198,8 +200,11 @@ function InstanceDialog({ instance, onClose }: { instance: MinecraftInstance; on
     await api.renameMinecraft(instance.id, name.trim() || null)
     onClose()
   })
+  const choices = useQuery(() => api.listMinecraftIcons(), [], ['meta'])
   const pick = useAction(() => api.pickMinecraftIcon(instance.id))
-  const clear = useAction(() => api.clearMinecraftIcon(instance.id))
+  const choose = useAction((key: string | null) => api.setMinecraftIcon(instance.id, key))
+  const shuffle = useAction(() => api.shuffleMinecraftIcon(instance.id))
+  const folder = useAction(() => api.openMinecraftIconFolder())
   return (
     <Dialog
       title={t('mc.editTitle', { name: instance.label })}
@@ -210,7 +215,7 @@ function InstanceDialog({ instance, onClose }: { instance: MinecraftInstance; on
       ]}
     >
       <div className="stack">
-        <ErrorFlash error={save.error ?? pick.error ?? clear.error} />
+        <ErrorFlash error={save.error ?? pick.error ?? choose.error ?? shuffle.error ?? folder.error ?? choices.error} />
         <Field label={t('mc.field.name')} hint={t('mc.nameHint')}>
           <TextInput
             block
@@ -226,16 +231,36 @@ function InstanceDialog({ instance, onClose }: { instance: MinecraftInstance; on
         </Field>
         <div className="form-field">
           <span className="form-label">{t('mc.field.icon')}</span>
-          <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+          <div className="row row-wrap" style={{ gap: 8, alignItems: 'center' }}>
             <InstanceIcon icon={instance.icon} />
-            <Button size="small" disabled={pick.busy} onClick={() => void pick.run()}>
+            <Button size="small" leadingVisual={SyncIcon} disabled={shuffle.busy} onClick={() => void shuffle.run()}>
+              {t('mc.shuffleIcon')}
+            </Button>
+            <Button size="small" leadingVisual={UploadIcon} disabled={pick.busy} onClick={() => void pick.run()}>
               {t('mc.pickIcon')}
             </Button>
+            <Button size="small" leadingVisual={FileDirectoryIcon} onClick={() => void folder.run()}>
+              {t('mc.iconFolder')}
+            </Button>
             {instance.customIcon && (
-              <Button size="small" variant="invisible" disabled={clear.busy} onClick={() => void clear.run()}>
+              <Button size="small" variant="invisible" disabled={choose.busy} onClick={() => void choose.run(null)}>
                 {t('mc.clearIcon')}
               </Button>
             )}
+          </div>
+          <div className="mc-icon-grid">
+            {(choices.data ?? []).map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                className={`mc-icon-choice${c.key === instance.iconChoice ? ' selected' : ''}`}
+                title={c.own ? c.key.slice('file:'.length) : undefined}
+                aria-pressed={c.key === instance.iconChoice}
+                onClick={() => void choose.run(c.key)}
+              >
+                <img src={c.url} alt="" draggable={false} />
+              </button>
+            ))}
           </div>
           <span className="small muted">{t('mc.iconHint')}</span>
         </div>

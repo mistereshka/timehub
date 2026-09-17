@@ -528,6 +528,14 @@ export interface InstalledGame {
   platformMinutes: number | null
 }
 
+/** A picture an instance's icon can be. */
+export interface MinecraftIconChoice {
+  key: string
+  url: string
+  /** from your pictures folder */
+  own: boolean
+}
+
 /** Official Minecraft art (from the Microsoft Store listing). */
 export interface MinecraftArt {
   /** 2:3, for the library */
@@ -549,6 +557,8 @@ export interface MinecraftInstance {
   /** The name / icon are your own, set in timehub */
   customName: boolean
   customIcon: boolean
+  /** The choice the icon comes from ("pixel:…" / "file:…"), to mark it in the picker */
+  iconChoice: string | null
   mcVersion: string | null
   loader: string | null
   loaderVersion: string | null

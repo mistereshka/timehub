@@ -9,6 +9,7 @@ import type {
 import { version } from '../../../../package.json'
 import { DEMO_ACTIVITY, DEMO_CALENDAR, DEMO_GAME, DEMO_TRACKS, artDataUrl, seedDemo } from './seed'
 import { openSqlJsDb } from './sqljs'
+import { hashString, pixelIcon, pixelIcons } from '@shared/pixelIcons'
 
 const POLL_MS = 5000
 
@@ -116,6 +117,7 @@ export async function createDemoApi(): Promise<TimehubApi> {
   }
 
   const minecraftNames = new Map<string, string>()
+  const minecraftIcons = new Map<string, string>()
 
   const host: HostHandlers = {
     getMeta: () => ({ version, dataPath: 'in-memory', demo: true, platform: 'web', packaged: false }),
@@ -174,7 +176,7 @@ export async function createDemoApi(): Promise<TimehubApi> {
     mediaControl: () => {},
     listGames: () => demoGames(gameAppId),
     launchGame: () => {},
-    listMinecraft: () => demoMinecraft(minecraftNames),
+    listMinecraft: () => demoMinecraft(minecraftNames, minecraftIcons),
     launchMinecraft: () => {},
     openMinecraftFolder: () => {},
     renameMinecraft: (id, name) => {
@@ -183,7 +185,18 @@ export async function createDemoApi(): Promise<TimehubApi> {
       emit('meta')
     },
     pickMinecraftIcon: () => false,
-    clearMinecraftIcon: () => {},
+    listMinecraftIcons: () => pixelIcons().map((i) => ({ ...i, own: false })),
+    setMinecraftIcon: (id, key) => {
+      if (key) minecraftIcons.set(id, key)
+      else minecraftIcons.delete(id)
+      emit('meta')
+    },
+    shuffleMinecraftIcon: (id) => {
+      const all = pixelIcons()
+      minecraftIcons.set(id, all[Math.floor(Math.random() * all.length)].key)
+      emit('meta')
+    },
+    openMinecraftIconFolder: () => {},
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
@@ -217,16 +230,21 @@ function demoGames(gameAppId: number): InstalledGame[] {
 }
 
 /** Prism Launcher instances for the demo's Minecraft page (names you give them live in `names`). */
-function demoMinecraft(names: Map<string, string>): MinecraftOverview {
+function demoMinecraft(names: Map<string, string>, icons: Map<string, string>): MinecraftOverview {
   const now = Date.now()
   const h = 3_600_000
   const store = 'https://store-images.s-microsoft.com/image/'
   const instance = (
-    i: Omit<MinecraftInstance, 'label' | 'autoLabel' | 'customName' | 'customIcon' | 'icon' | 'appId' | 'running'> & { auto: string }
+    i: Omit<MinecraftInstance, 'label' | 'autoLabel' | 'customName' | 'customIcon' | 'iconChoice' | 'icon' | 'appId' | 'running'> & { auto: string }
   ): MinecraftInstance => {
     const { auto, ...rest } = i
     const custom = names.get(i.id)
-    return { ...rest, label: custom ?? auto, autoLabel: auto, customName: !!custom, customIcon: false, icon: null, appId: null, running: false }
+    const all = pixelIcons()
+    const key = icons.get(i.id) ?? all[hashString(i.id) % all.length].key
+    return {
+      ...rest, label: custom ?? auto, autoLabel: auto, customName: !!custom, customIcon: icons.has(i.id), iconChoice: key, icon: pixelIcon(key),
+      appId: null, running: false
+    }
   }
   return {
     found: true,
