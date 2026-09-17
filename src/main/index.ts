@@ -88,7 +88,12 @@ async function main(): Promise<void> {
   service.forgetApps({ paths: [process.execPath], names: ['timehub.exe'] })
   // Once: past browser time on known sites (YouTube…) moves from "Chrome" to those sites.
   service.splitBrowserSessionsBySite()
-  const minecraft: MinecraftService = new MinecraftService(service, (): string[] => tracker.getRunningGames().map((g) => g.exePath))
+  const minecraft: MinecraftService = new MinecraftService(
+    service,
+    (): string[] => tracker.getRunningGames().map((g) => g.exePath),
+    join(dataPath, 'minecraft.json'),
+    () => broadcast('meta')
+  )
   try {
     // Minecraft filed as "OpenJDK Platform binary" before timehub knew better
     service.splitMinecraftSessions(minecraft.resolverAt())
@@ -152,7 +157,16 @@ async function main(): Promise<void> {
   powerMonitor.on('resume', () => service.generateRecurring())
   // Recurring tasks that complete on target time, e.g. "English, 2 hours".
   every(30_000, () => service.checkTargets())
-  every(5 * 60_000, () => service.refreshGamesInLibrary(), true)
+  every(
+    5 * 60_000,
+    () => {
+      service.refreshGamesInLibrary()
+      minecraft.ensureLibraryCover()
+    },
+    true
+  )
+  // the official Minecraft art: the library card's poster, the icon of instances without one
+  void minecraft.loadArt().catch((err) => console.error('Minecraft art failed:', err))
   // Windows notifications before timed tasks and events; a click opens the task.
   const reminders = new Reminders(service, appIcon, (path) => {
     showWindow()
@@ -212,7 +226,18 @@ async function main(): Promise<void> {
     launchGame: (id) => games.launch(id),
     listMinecraft: () => minecraft.overview(),
     launchMinecraft: (id) => minecraft.launch(id),
-    openMinecraftFolder: (id) => minecraft.openFolder(id)
+    openMinecraftFolder: (id) => minecraft.openFolder(id),
+    renameMinecraft: (id, name) => minecraft.rename(id, name),
+    pickMinecraftIcon: async (id) => {
+      const r = await dialog.showOpenDialog(win!, {
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'svg'] }]
+      })
+      if (r.canceled || !r.filePaths[0]) return false
+      minecraft.setIconFromFile(id, r.filePaths[0])
+      return true
+    },
+    clearMinecraftIcon: (id) => minecraft.clearIcon(id)
   }
   registerIpc(service, host)
 

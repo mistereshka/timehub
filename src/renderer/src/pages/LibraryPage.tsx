@@ -4,7 +4,8 @@ import {
   AppsIcon, ChevronDownIcon, ChevronRightIcon, HeartFillIcon, HeartIcon, ListUnorderedIcon, PlugIcon, PlusIcon, SearchIcon, SyncIcon,
   TriangleDownIcon
 } from '@primer/octicons-react'
-import { useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
+import { isMinecraftLibraryItem } from '@shared/minecraft'
 import type { LibraryItem, LibraryKind, LibraryStatus } from '@shared/types'
 import { api } from '../api'
 import { useAction, useQuery } from '../hooks'
@@ -64,6 +65,12 @@ export function LibraryPage(): ReactNode {
   const [adding, setAdding] = useState(false)
   const items = useQuery(() => api.listLibrary(), [], ['library', 'activity'])
   const conns = useQuery(() => api.listConnections(), [], ['connections'])
+  const navigate = useNavigate()
+  // Minecraft's card is a door to its own page (instances, time, launch)
+  const openItem = (i: LibraryItem): void => {
+    if (isMinecraftLibraryItem(i)) void navigate('/minecraft')
+    else setEditing(i)
+  }
 
   const setView = (v: 'list' | 'grid'): void => {
     setViewState(v)
@@ -193,13 +200,13 @@ export function LibraryPage(): ReactNode {
             <div className="box">
               {shown.map((i) => (
                 // a search that hits a track shows it inside its album
-                <LibraryRow key={i.id} item={i} tracks={tracksOf.get(i.id)} openTracks={!!needle && !matches(i)} onOpen={setEditing} />
+                <LibraryRow key={i.id} item={i} tracks={tracksOf.get(i.id)} openTracks={!!needle && !matches(i)} onOpen={openItem} />
               ))}
             </div>
           ) : (
             <div className="library-grid">
               {shown.map((i) => (
-                <LibraryTile key={i.id} item={i} onOpen={() => setEditing(i)} />
+                <LibraryTile key={i.id} item={i} onOpen={() => openItem(i)} />
               ))}
             </div>
           )}

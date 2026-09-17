@@ -1,14 +1,14 @@
 import { spawn } from 'node:child_process'
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, isAbsolute, join } from 'node:path'
 import { constants as zlibConstants, gunzipSync } from 'node:zlib'
-import { shell } from 'electron'
+import { nativeImage, shell, type NativeImage } from 'electron'
 import {
-  MINECRAFT_PREFIX, UNKNOWN_MINECRAFT, clockLogStart, debugLogStart, instanceAt, instanceForProcess, instanceLabels, minecraftInstanceOf,
-  packInfo, parseInstanceCfg, type GameRun, type MinecraftMatch, type PackInfo
+  MINECRAFT_PREFIX, UNKNOWN_MINECRAFT, clockLogStart, debugLogStart, instanceAt, instanceForProcess, instanceLabels, isMinecraftLibraryItem,
+  minecraftInstanceOf, packInfo, parseInstanceCfg, type GameRun, type MinecraftMatch, type PackInfo
 } from '@shared/minecraft'
 import type { Service } from '@shared/service'
-import type { AppInfo, MinecraftInstance, MinecraftOverview } from '@shared/types'
+import type { MinecraftArt, MinecraftInstance, MinecraftOverview } from '@shared/types'
 
 interface Instance extends PackInfo {
   id: string
@@ -21,8 +21,26 @@ interface Instance extends PackInfo {
   prismMs: number
 }
 
+/** Your own name and icon for an instance — kept by timehub; Prism's files stay untouched. */
+interface Custom {
+  name?: string
+  icon?: string
+}
+
 const ICON_TYPES: Record<string, string> = {
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.ico': 'image/x-icon', '.svg': 'image/svg+xml'
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.ico': 'image/x-icon', '.svg': 'image/svg+xml',
+  '.webp': 'image/webp', '.bmp': 'image/bmp'
+}
+const ICON_SIZE = 128
+
+/** Minecraft: Java & Bedrock Edition for PC in the Microsoft Store — the official art comes from its listing. */
+const STORE_PRODUCT = '9NXP44L49SHJ'
+const STORE_IMAGES = 'https://store-images.s-microsoft.com/image/'
+/** The same art, for when the store can't be reached. */
+const FALLBACK_ART: MinecraftArt = {
+  poster: `${STORE_IMAGES}apps.808.14492077886571533.be42f4bd-887b-4430-8ed0-622341b4d2b0.c8274c53-105e-478b-9f4b-41b8088210a3`,
+  banner: `${STORE_IMAGES}apps.58378.14492077886571533.338a563a-86e7-47b1-b9dc-41cf411f5dcd.dc840f22-6e8f-4a59-b7bc-57958a0740fd`,
+  logo: `${STORE_IMAGES}apps.2726.14492077886571533.be42f4bd-887b-4430-8ed0-622341b4d2b0.b7314828-2896-431a-b863-1e3de670a5b2`
 }
 
 /** The first line of a log, gzipped or not — only the beginning of the file is read. */
@@ -39,16 +57,36 @@ function firstLine(path: string): string {
   }
 }
 
-/** Minecraft instances from Prism Launcher: time played in each, runs from their logs, and launching them. */
+/** A picture as a small PNG data: URL. */
+function iconFromImage(image: NativeImage): string {
+  const { width, height } = image.getSize()
+  if (Math.max(width, height) <= ICON_SIZE) return image.toDataURL()
+  return image.resize(width >= height ? { width: ICON_SIZE, quality: 'best' } : { height: ICON_SIZE, quality: 'best' }).toDataURL()
+}
+
+/** Minecraft instances from Prism Launcher: time played in each, runs from their logs, your names and icons, launching. */
 export class MinecraftService {
   private cache: { at: number; list: Instance[] } | null = null
   private readonly icons = new Map<string, string | null>()
+  private customs: Record<string, Custom>
+  private art: MinecraftArt = FALLBACK_ART
+  /** Minecraft's own icon, for instances without one */
+  private logo: string | null = null
 
   constructor(
     private readonly service: Service,
     /** exe paths of the games running now ("minecraft:<id>" for instances) */
-    private readonly runningGames: () => string[]
-  ) {}
+    private readonly runningGames: () => string[],
+    /** where your names and icons are kept */
+    private readonly file: string,
+    private readonly onChange: () => void
+  ) {
+    try {
+      this.customs = JSON.parse(readFileSync(file, 'utf8')) as Record<string, Custom>
+    } catch {
+      this.customs = {}
+    }
+  }
 
   /** Prism's data folder, or null when Prism isn't installed. */
   dataDir(): string | null {
@@ -65,6 +103,45 @@ export class MinecraftService {
       ...(data ? [join(data, 'prismlauncher.exe')] : [])
     ]
     return candidates.find((p) => existsSync(p)) ?? null
+  }
+
+  /** The official poster, banner and logo. */
+  getArt(): MinecraftArt {
+    return this.art
+  }
+
+  /** Fetches the official art from the store listing, then dresses the library card and the instance apps. */
+  async loadArt(): Promise<void> {
+    try {
+      const res = await fetch(
+        `https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=${STORE_PRODUCT}&market=US&languages=en-us&MS-CV=DGU1mcuYo0WMMp.0`,
+        { signal: AbortSignal.timeout(10_000) }
+      )
+      type Catalog = { Products?: { LocalizedProperties?: { Images?: { ImagePurpose: string; Uri: string }[] }[] }[] }
+      const images = ((await res.json()) as Catalog).Products?.[0]?.LocalizedProperties?.[0]?.Images ?? []
+      const pick = (purpose: string, fallback: string): string => {
+        const uri = images.find((i) => i.ImagePurpose === purpose)?.Uri
+        return uri ? (uri.startsWith('//') ? `https:${uri}` : uri) : fallback
+      }
+      this.art = { poster: pick('Poster', FALLBACK_ART.poster), banner: pick('SuperHeroArt', FALLBACK_ART.banner), logo: pick('Logo', FALLBACK_ART.logo) }
+    } catch {
+      // the fallback art stays
+    }
+    try {
+      const res = await fetch(this.art.logo, { signal: AbortSignal.timeout(10_000) })
+      const image = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()))
+      if (res.ok && !image.isEmpty()) this.logo = iconFromImage(image)
+    } catch {
+      // instances without an icon get minecraft.net's favicon from the tracker
+    }
+    this.ensureLibraryCover()
+    this.syncApps()
+  }
+
+  /** The library's Minecraft card wears the official poster. */
+  ensureLibraryCover(): void {
+    const card = this.service.listLibrary({ kind: 'game' }).find(isMinecraftLibraryItem)
+    if (card && !card.coverUrl) this.service.setLibraryCover(card.id, this.art.poster)
   }
 
   /** A folder from prismlauncher.cfg (relative to the data folder unless absolute). */
@@ -122,7 +199,7 @@ export class MinecraftService {
   }
 
   /** A custom icon from Prism's icons folder (built-in ones like "default" have no file). */
-  private icon(key: string): string | null {
+  private prismIcon(key: string): string | null {
     if (!key) return null
     const cached = this.icons.get(key)
     if (cached !== undefined) return cached
@@ -179,9 +256,48 @@ export class MinecraftService {
     return runs
   }
 
+  private custom(id: string): Custom {
+    return this.customs[id.toLowerCase()] ?? {}
+  }
+
+  private setCustom(id: string, patch: Custom): void {
+    const next: Custom = { ...this.custom(id), ...patch }
+    if (!next.name) delete next.name
+    if (!next.icon) delete next.icon
+    if (next.name || next.icon) this.customs[id.toLowerCase()] = next
+    else delete this.customs[id.toLowerCase()]
+    writeFileSync(this.file, JSON.stringify(this.customs, null, 2))
+    this.syncApps()
+    this.onChange()
+  }
+
+  /** What an instance is called and wears everywhere in timehub. */
+  private appearance(i: Instance, labels: Map<string, string>): { label: string; appName: string; icon: string | null } {
+    const c = this.custom(i.id)
+    const auto = labels.get(i.id) ?? i.name
+    return { label: c.name ?? auto, appName: c.name ?? `Minecraft ${auto}`, icon: c.icon ?? this.prismIcon(i.iconKey) ?? this.logo }
+  }
+
+  /** The apps made for instances follow the instances' names and icons (rename them here, not in Activity). */
+  syncApps(): void {
+    const all = this.instances()
+    const labels = instanceLabels(all)
+    for (const app of this.service.listApps()) {
+      const id = minecraftInstanceOf(app.exePath)
+      if (id == null) continue
+      const instance = all.find((x) => x.id.toLowerCase() === id.toLowerCase())
+      const look = instance ? this.appearance(instance, labels) : null
+      const name = look?.appName ?? (id ? app.displayName : 'Minecraft')
+      if (app.displayName !== name) this.service.updateApp(app.id, { displayName: name })
+      const icon = look ? look.icon : this.logo
+      if (icon && app.icon !== icon) this.service.setAppIcon(app.id, icon)
+    }
+  }
+
   private match(i: Instance | undefined, all: Instance[]): MinecraftMatch {
-    if (!i) return UNKNOWN_MINECRAFT
-    return { exePath: MINECRAFT_PREFIX + i.id, name: `Minecraft ${instanceLabels(all).get(i.id)}`, icon: this.icon(i.iconKey) }
+    if (!i) return { ...UNKNOWN_MINECRAFT, icon: this.logo }
+    const look = this.appearance(i, instanceLabels(all))
+    return { exePath: MINECRAFT_PREFIX + i.id, name: look.appName, icon: look.icon }
   }
 
   /** The instance of a running game process, from when the process started. */
@@ -209,10 +325,11 @@ export class MinecraftService {
   }
 
   overview(): MinecraftOverview {
+    this.syncApps()
     const all = this.instances()
     const labels = instanceLabels(all)
     const totals = this.service.appPlayTotals()
-    const apps = new Map<string, AppInfo>()
+    const apps = new Map<string, { id: number; icon: string | null }>()
     for (const a of this.service.listApps()) {
       const id = minecraftInstanceOf(a.exePath)
       if (id != null) apps.set(id.toLowerCase(), a)
@@ -221,18 +338,20 @@ export class MinecraftService {
     const instances: MinecraftInstance[] = all.map((i) => {
       const app = apps.get(i.id.toLowerCase())
       const t = app ? totals.get(app.id) : undefined
-      // keep the app's name in step with the instance, unless it was renamed by hand
-      const name = `Minecraft ${labels.get(i.id)}`
-      if (app && app.displayName !== name && app.displayName.startsWith('Minecraft ')) this.service.updateApp(app.id, { displayName: name })
+      const custom = this.custom(i.id)
+      const look = this.appearance(i, labels)
       return {
         id: i.id,
         name: i.name,
-        label: labels.get(i.id) ?? i.name,
+        label: look.label,
+        autoLabel: labels.get(i.id) ?? i.name,
+        customName: !!custom.name,
+        customIcon: !!custom.icon,
         mcVersion: i.mcVersion,
         loader: i.loader,
         loaderVersion: i.loaderVersion,
         modCount: this.modCount(i),
-        icon: this.icon(i.iconKey) ?? null,
+        icon: look.icon,
         prismMs: i.prismMs,
         lastLaunch: i.lastLaunch,
         appId: app?.id ?? null,
@@ -248,6 +367,7 @@ export class MinecraftService {
     return {
       found: this.dataDir() != null,
       canLaunch: this.launcherPath() != null,
+      art: this.art,
       instances,
       other: other && otherTotals?.ms ? { appId: other.id, trackedMs: otherTotals.ms, lastPlayed: otherTotals.last || null } : null
     }
@@ -257,6 +377,30 @@ export class MinecraftService {
     const instance = this.instances().find((i) => i.id === id)
     if (!instance) throw new Error('Instance not found')
     return instance
+  }
+
+  /** Your own name for an instance; empty brings back the automatic one. */
+  rename(id: string, name: string | null): void {
+    this.setCustom(this.find(id).id, { name: name?.trim().slice(0, 80) || undefined })
+  }
+
+  /** Makes a picture from disk the instance's icon (shrunk to a small PNG where possible). */
+  setIconFromFile(id: string, path: string): void {
+    const instance = this.find(id)
+    const image = nativeImage.createFromPath(path)
+    let icon: string
+    if (!image.isEmpty()) icon = iconFromImage(image)
+    else {
+      const type = ICON_TYPES[extname(path).toLowerCase()]
+      const buf = readFileSync(path)
+      if (!type || buf.length > 400_000) throw new Error('This picture can’t be used as an icon')
+      icon = `data:${type};base64,${buf.toString('base64')}`
+    }
+    this.setCustom(instance.id, { icon })
+  }
+
+  clearIcon(id: string): void {
+    this.setCustom(this.find(id).id, { icon: undefined })
   }
 
   /** Starts an instance the way Prism's own "Launch" does (a running Prism takes the request over). */

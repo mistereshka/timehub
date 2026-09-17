@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { openNodeDb } from '../main/db'
 import { looksLikeGame } from './catalog'
 import {
-  UNKNOWN_MINECRAFT, clockLogStart, debugLogStart, instanceAt, instanceForProcess, instanceLabels, isMinecraftWindow, minecraftInstanceOf,
-  packInfo, parseInstanceCfg
+  UNKNOWN_MINECRAFT, clockLogStart, debugLogStart, instanceAt, instanceForProcess, instanceLabels, isMinecraftLibraryItem, isMinecraftWindow,
+  minecraftInstanceOf, packInfo, parseInstanceCfg
 } from './minecraft'
 import { Service } from './service'
 import { MINUTE } from './time'
@@ -78,6 +78,22 @@ describe('minecraft', () => {
     expect(instanceForProcess(launched, at(2, 36) + 20_000)).toBe('a')
     expect(instanceForProcess(launched, at(1, 5))).toBe('b')
     expect(instanceForProcess(launched, at(9, 0))).toBeNull()
+  })
+
+  it('puts all of Minecraft on one library card', () => {
+    const clock = { now: new Date(2026, 8, 17, 10, 0).getTime() }
+    const svc = new Service(openNodeDb(':memory:'), { now: () => clock.now, language: 'ru' })
+    const a = svc.ensureApp('minecraft:a', 'minecraft', 'Minecraft A', 'games').app
+    const b = svc.ensureApp('minecraft:b', 'minecraft', 'Minecraft B', 'games').app
+    const t = clock.now - 60 * MINUTE
+    svc.seedSession(a.id, 'Minecraft* 1.20.1', t, t + 20 * MINUTE)
+    svc.seedSession(b.id, 'Minecraft 1.21.1', t + 30 * MINUTE, t + 40 * MINUTE)
+    expect(svc.refreshGamesInLibrary()).toBe(1)
+    const games = svc.listLibrary({ kind: 'game' })
+    expect(games).toHaveLength(1)
+    expect(games[0]).toMatchObject({ title: 'Minecraft', status: 'active', trackedMs: 30 * MINUTE, appId: null })
+    expect(isMinecraftLibraryItem(games[0])).toBe(true)
+    expect(svc.refreshGamesInLibrary()).toBe(0)
   })
 
   it('moves Minecraft played inside Java to its instance, once', () => {

@@ -567,9 +567,62 @@ button.pill {
 
 /* -------------------------------------------------------------- minecraft */
 
+/* the page's banner: official key art under a dark fade, the poster on top */
+.mc-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: 150px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bgColor-emphasis) center 30% / cover no-repeat;
+}
+.mc-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.8), rgb(0 0 0 / 0.15));
+}
+.mc-hero-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 16px 20px;
+  color: #fff;
+}
+.mc-hero-poster {
+  width: 72px;
+  height: 108px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.4);
+}
+.mc-hero-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+.mc-hero-sub {
+  opacity: 0.85;
+}
 .mc-row {
   align-items: center;
   gap: 12px;
+}
+.mc-icon-btn {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.mc-icon-btn:hover .mc-icon {
+  outline: 2px solid var(--borderColor-accent-emphasis);
 }
 .mc-icon {
   width: 40px;

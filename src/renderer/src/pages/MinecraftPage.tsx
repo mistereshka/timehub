@@ -1,23 +1,34 @@
 import { useState, type ReactNode } from 'react'
-import { Button, Label } from '@primer/react'
-import { ClockIcon, FileDirectoryIcon, GraphIcon, HistoryIcon, PackageIcon, PlayIcon } from '@primer/octicons-react'
-import { useNavigate } from 'react-router'
+import { Button, Dialog, Label, TextInput } from '@primer/react'
+import { ArrowLeftIcon, ClockIcon, FileDirectoryIcon, GraphIcon, HistoryIcon, PackageIcon, PencilIcon, PlayIcon } from '@primer/octicons-react'
+import { Link, useNavigate } from 'react-router'
 import type { MinecraftInstance } from '@shared/types'
 import { api } from '../api'
 import { useAction, useQuery } from '../hooks'
 import { useI18n } from '../i18n'
-import { Blankslate, ErrorFlash, Stat } from '../components/common'
+import { Blankslate, ErrorFlash, Field, Stat } from '../components/common'
 
 /** Prism counts all the time an instance runs, timehub only what it saw — the larger one is the time played. */
 const playedMs = (i: MinecraftInstance): number => Math.max(i.prismMs, i.trackedMs)
 const lastAt = (i: MinecraftInstance): number => Math.max(i.lastLaunch ?? 0, i.lastPlayed ?? 0)
 
-/** Minecraft instances from Prism Launcher: the time played in each, one click to start. */
+function InstanceIcon({ icon }: { icon: string | null }): ReactNode {
+  return icon ? (
+    <img className="mc-icon" src={icon} alt="" draggable={false} />
+  ) : (
+    <span className="mc-icon mc-icon-empty" aria-hidden="true">
+      ⛏️
+    </span>
+  )
+}
+
+/** Minecraft from the library: Prism Launcher instances, the time played in each, one click to start. */
 export function MinecraftPage(): ReactNode {
   const { t, tn, duration, ago } = useI18n()
   const navigate = useNavigate()
   const data = useQuery(() => api.listMinecraft(), [], ['activity', 'meta'])
   const [launching, setLaunching] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
   const launch = useAction(async (id: string) => {
     setLaunching(id)
     setTimeout(() => setLaunching((x) => (x === id ? null : x)), 8000)
@@ -27,6 +38,7 @@ export function MinecraftPage(): ReactNode {
 
   const overview = data.data
   const instances = overview?.instances ?? []
+  const edited = instances.find((i) => i.id === editing)
   const top = Math.max(1, ...instances.map(playedMs))
   const prismTotal = instances.reduce((sum, i) => sum + i.prismMs, 0)
   const trackedTotal = instances.reduce((sum, i) => sum + i.trackedMs, 0) + (overview?.other?.trackedMs ?? 0)
@@ -34,6 +46,7 @@ export function MinecraftPage(): ReactNode {
 
   const details = (i: MinecraftInstance): string =>
     [
+      i.customName && i.autoLabel,
       i.mcVersion && `Minecraft ${i.mcVersion}`,
       i.loader ? [i.loader, i.loaderVersion].filter(Boolean).join(' ') : t('mc.vanilla'),
       i.modCount > 0 && tn('mc.mods', i.modCount),
@@ -54,10 +67,18 @@ export function MinecraftPage(): ReactNode {
 
   return (
     <div className="container container-wide">
-      <div className="page-head">
-        <div className="grow">
-          <h1 className="page-title">{t('mc.title')}</h1>
-          <div className="muted">{t('mc.subtitle')}</div>
+      <div className="mb-2">
+        <Link to="/library?kind=game" className="small">
+          <ArrowLeftIcon size={14} /> {t('mc.back')}
+        </Link>
+      </div>
+      <div className="mc-hero" style={overview ? { backgroundImage: `url("${overview.art.banner}")` } : undefined}>
+        <div className="mc-hero-body">
+          {overview && <img className="mc-hero-poster" src={overview.art.poster} alt="" draggable={false} />}
+          <div style={{ minWidth: 0 }}>
+            <h1 className="mc-hero-title">{t('mc.title')}</h1>
+            <div className="mc-hero-sub">{t('mc.subtitle')}</div>
+          </div>
         </div>
       </div>
       <ErrorFlash error={launch.error ?? folder.error} />
@@ -78,7 +99,15 @@ export function MinecraftPage(): ReactNode {
               <Stat
                 icon={<HistoryIcon size={14} />}
                 label={t('mc.lastPlayed')}
-                value={last ? <span className="truncate" title={last.label}>{`${last.label} · ${ago(lastAt(last))}`}</span> : '—'}
+                value={
+                  last ? (
+                    <span className="truncate" title={last.label}>
+                      {`${last.label} · ${ago(lastAt(last))}`}
+                    </span>
+                  ) : (
+                    '—'
+                  )
+                }
               />
             </div>
 
@@ -90,13 +119,9 @@ export function MinecraftPage(): ReactNode {
               {instances.length === 0 && <div className="box-body small muted">{t('mc.noInstances')}</div>}
               {instances.map((i) => (
                 <div key={i.id} className="box-row mc-row">
-                  {i.icon ? (
-                    <img className="mc-icon" src={i.icon} alt="" draggable={false} />
-                  ) : (
-                    <span className="mc-icon mc-icon-empty" aria-hidden="true">
-                      ⛏️
-                    </span>
-                  )}
+                  <button type="button" className="mc-icon-btn" title={t('mc.edit')} onClick={() => setEditing(i.id)}>
+                    <InstanceIcon icon={i.icon} />
+                  </button>
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div className="row" style={{ gap: 8 }}>
                       <span className="bold truncate" title={i.label}>
@@ -120,6 +145,9 @@ export function MinecraftPage(): ReactNode {
                     >
                       {launching === i.id ? t('mc.launching') : t('mc.play')}
                     </Button>
+                    <Button size="small" leadingVisual={PencilIcon} onClick={() => setEditing(i.id)}>
+                      {t('mc.edit')}
+                    </Button>
                     <Button size="small" leadingVisual={FileDirectoryIcon} onClick={() => void folder.run(i.id)}>
                       {t('mc.folder')}
                     </Button>
@@ -133,9 +161,7 @@ export function MinecraftPage(): ReactNode {
               ))}
               {overview.other && (
                 <div className="box-row mc-row">
-                  <span className="mc-icon mc-icon-empty" aria-hidden="true">
-                    ❔
-                  </span>
+                  <InstanceIcon icon={null} />
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div className="bold">{t('mc.other')}</div>
                     <div className="small muted truncate">{t('mc.otherHint')}</div>
@@ -159,6 +185,61 @@ export function MinecraftPage(): ReactNode {
           </>
         )
       )}
+      {edited && <InstanceDialog key={edited.id} instance={edited} onClose={() => setEditing(null)} />}
     </div>
+  )
+}
+
+/** Your own name and icon for an instance. */
+function InstanceDialog({ instance, onClose }: { instance: MinecraftInstance; onClose(): void }): ReactNode {
+  const { t } = useI18n()
+  const [name, setName] = useState(instance.customName ? instance.label : '')
+  const save = useAction(async () => {
+    await api.renameMinecraft(instance.id, name.trim() || null)
+    onClose()
+  })
+  const pick = useAction(() => api.pickMinecraftIcon(instance.id))
+  const clear = useAction(() => api.clearMinecraftIcon(instance.id))
+  return (
+    <Dialog
+      title={t('mc.editTitle', { name: instance.label })}
+      onClose={onClose}
+      footerButtons={[
+        { content: t('common.cancel'), onClick: onClose },
+        { content: t('common.save'), buttonType: 'primary', disabled: save.busy, onClick: () => void save.run() }
+      ]}
+    >
+      <div className="stack">
+        <ErrorFlash error={save.error ?? pick.error ?? clear.error} />
+        <Field label={t('mc.field.name')} hint={t('mc.nameHint')}>
+          <TextInput
+            block
+            autoFocus
+            value={name}
+            placeholder={instance.autoLabel}
+            maxLength={80}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void save.run()
+            }}
+          />
+        </Field>
+        <div className="form-field">
+          <span className="form-label">{t('mc.field.icon')}</span>
+          <div className="row" style={{ gap: 12, alignItems: 'center' }}>
+            <InstanceIcon icon={instance.icon} />
+            <Button size="small" disabled={pick.busy} onClick={() => void pick.run()}>
+              {t('mc.pickIcon')}
+            </Button>
+            {instance.customIcon && (
+              <Button size="small" variant="invisible" disabled={clear.busy} onClick={() => void clear.run()}>
+                {t('mc.clearIcon')}
+              </Button>
+            )}
+          </div>
+          <span className="small muted">{t('mc.iconHint')}</span>
+        </div>
+      </div>
+    </Dialog>
   )
 }

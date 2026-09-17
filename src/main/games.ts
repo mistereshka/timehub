@@ -82,10 +82,12 @@ export class GamesService {
     }
     // Minecraft instances from Prism Launcher, each on its own (they have their own tab too)
     const prism = this.minecraft.launcherPath()
-    for (const i of this.minecraft.overview().instances) {
+    const minecraft = this.minecraft.overview()
+    for (const i of minecraft.instances) {
       add(
         {
-          id: `minecraft:${i.id}`, name: `Minecraft ${i.label}`, platform: 'minecraft', cover: null, icon: i.icon, appId: i.appId,
+          id: `minecraft:${i.id}`, name: i.customName ? i.label : `Minecraft ${i.label}`, platform: 'minecraft', cover: minecraft.art.poster,
+          icon: i.icon, appId: i.appId,
           trackedMs: i.trackedMs, lastPlayed: Math.max(i.lastLaunch ?? 0, i.lastPlayed ?? 0) || null, platformMinutes: Math.round(i.prismMs / 60_000)
         },
         { kind: 'exe', path: prism ?? '', args: ['--launch', i.id] }

@@ -272,13 +272,9 @@ export class Tracker {
     this.service.setAppIcon(appId, icon)
   }
 
-  /** Icons for apps made from history: sites split out of the browser, Minecraft out of Java. */
+  /** Favicons for sites split out of the browser history (Minecraft instances get theirs from MinecraftService). */
   ensureSiteIcons(): void {
-    for (const a of this.service.listApps()) {
-      if (a.icon) continue
-      if (a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
-      else if (minecraftInstanceOf(a.exePath) != null) this.loadSiteIcon(a.id, 'minecraft.net')
-    }
+    for (const a of this.service.listApps()) if (!a.icon && a.exePath.startsWith('site:')) this.loadSiteIcon(a.id, a.exeName)
   }
 
   private loadSiteIcon(appId: ID, domain: string): void {

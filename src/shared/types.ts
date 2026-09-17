@@ -528,13 +528,27 @@ export interface InstalledGame {
   platformMinutes: number | null
 }
 
+/** Official Minecraft art (from the Microsoft Store listing). */
+export interface MinecraftArt {
+  /** 2:3, for the library */
+  poster: string
+  /** 16:9 */
+  banner: string
+  logo: string
+}
+
 /** A Prism Launcher instance (modpack) with the time played in it. */
 export interface MinecraftInstance {
   /** Folder name — what `prismlauncher --launch` takes */
   id: string
   name: string
-  /** "1.20.1 · Forge", with the folder when two instances would look the same */
+  /** Your name for it, or "1.20.1 · Forge" (with what tells look-alike folders apart) */
   label: string
+  /** The name timehub gives it on its own */
+  autoLabel: string
+  /** The name / icon are your own, set in timehub */
+  customName: boolean
+  customIcon: boolean
   mcVersion: string | null
   loader: string | null
   loaderVersion: string | null
@@ -554,6 +568,7 @@ export interface MinecraftOverview {
   found: boolean
   /** prismlauncher.exe was found, so instances can be started */
   canLaunch: boolean
+  art: MinecraftArt
   instances: MinecraftInstance[]
   /** Minecraft timehub saw without knowing the instance (other launchers, older history) */
   other: { appId: ID; trackedMs: number; lastPlayed: number | null } | null

@@ -13,6 +13,11 @@ export const MINECRAFT_PREFIX = 'minecraft:'
 export const minecraftInstanceOf = (exePath: string): string | null =>
   exePath.toLowerCase().startsWith(MINECRAFT_PREFIX) ? exePath.slice(MINECRAFT_PREFIX.length) : null
 
+/** The one library card for Minecraft — all instances together; it opens the Minecraft page. */
+export const MINECRAFT_LIBRARY_ID = 'minecraft'
+export const isMinecraftLibraryItem = (item: { source: string; externalId: string | null }): boolean =>
+  item.source === 'tracker' && item.externalId === MINECRAFT_LIBRARY_ID
+
 /** What the tracker records a Minecraft window as. */
 export interface MinecraftMatch {
   exePath: string

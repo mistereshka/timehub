@@ -4,7 +4,7 @@ import { transaction } from '@shared/sql'
 import { MINUTE, startOfDayMs, todayKey } from '@shared/time'
 import type {
   ChangeTopic, ConnectionKey, ConnectionStatus, DotaMatch, DotaStats, GamePresence, InstalledGame, Lang, LibraryKind, LibrarySearchResult,
-  MediaPresence, MinecraftOverview, TrackerStatus
+  MediaPresence, MinecraftInstance, MinecraftOverview, TrackerStatus
 } from '@shared/types'
 import { version } from '../../../../package.json'
 import { DEMO_ACTIVITY, DEMO_CALENDAR, DEMO_GAME, DEMO_TRACKS, artDataUrl, seedDemo } from './seed'
@@ -115,6 +115,8 @@ export async function createDemoApi(): Promise<TimehubApi> {
     return next
   }
 
+  const minecraftNames = new Map<string, string>()
+
   const host: HostHandlers = {
     getMeta: () => ({ version, dataPath: 'in-memory', demo: true, platform: 'web', packaged: false }),
     getTrackerStatus: () => status,
@@ -172,9 +174,16 @@ export async function createDemoApi(): Promise<TimehubApi> {
     mediaControl: () => {},
     listGames: () => demoGames(gameAppId),
     launchGame: () => {},
-    listMinecraft: () => demoMinecraft(),
+    listMinecraft: () => demoMinecraft(minecraftNames),
     launchMinecraft: () => {},
     openMinecraftFolder: () => {},
+    renameMinecraft: (id, name) => {
+      if (name?.trim()) minecraftNames.set(id, name.trim())
+      else minecraftNames.delete(id)
+      emit('meta')
+    },
+    pickMinecraftIcon: () => false,
+    clearMinecraftIcon: () => {},
     searchLibrary: (kind, query) => searchCatalog(kind, query, language)
   }
 
@@ -207,28 +216,40 @@ function demoGames(gameAppId: number): InstalledGame[] {
   ]
 }
 
-/** Prism Launcher instances for the demo's Minecraft tab. */
-function demoMinecraft(): MinecraftOverview {
+/** Prism Launcher instances for the demo's Minecraft page (names you give them live in `names`). */
+function demoMinecraft(names: Map<string, string>): MinecraftOverview {
   const now = Date.now()
   const h = 3_600_000
-  const base = { icon: null, appId: null, running: false }
+  const store = 'https://store-images.s-microsoft.com/image/'
+  const instance = (
+    i: Omit<MinecraftInstance, 'label' | 'autoLabel' | 'customName' | 'customIcon' | 'icon' | 'appId' | 'running'> & { auto: string }
+  ): MinecraftInstance => {
+    const { auto, ...rest } = i
+    const custom = names.get(i.id)
+    return { ...rest, label: custom ?? auto, autoLabel: auto, customName: !!custom, customIcon: false, icon: null, appId: null, running: false }
+  }
   return {
     found: true,
     canLaunch: true,
     other: null,
+    art: {
+      poster: `${store}apps.808.14492077886571533.be42f4bd-887b-4430-8ed0-622341b4d2b0.c8274c53-105e-478b-9f4b-41b8088210a3`,
+      banner: `${store}apps.58378.14492077886571533.338a563a-86e7-47b1-b9dc-41cf411f5dcd.dc840f22-6e8f-4a59-b7bc-57958a0740fd`,
+      logo: `${store}apps.2726.14492077886571533.be42f4bd-887b-4430-8ed0-622341b4d2b0.b7314828-2896-431a-b863-1e3de670a5b2`
+    },
     instances: [
-      {
-        ...base, id: 'Create Above and Beyond', name: 'Create: Above and Beyond', label: 'Create: Above and Beyond · Forge', mcVersion: '1.18.2',
+      instance({
+        id: 'Create Above and Beyond', name: 'Create: Above and Beyond', auto: 'Create: Above and Beyond · Forge', mcVersion: '1.18.2',
         loader: 'Forge', loaderVersion: '40.2.0', modCount: 187, prismMs: 42 * h, lastLaunch: now - 5 * h, trackedMs: 11 * h, lastPlayed: now - 3 * h
-      },
-      {
-        ...base, id: 'Fabulously Optimized', name: 'Fabulously Optimized', label: 'Fabulously Optimized · Fabric', mcVersion: '1.21.1',
+      }),
+      instance({
+        id: 'Fabulously Optimized', name: 'Fabulously Optimized', auto: 'Fabulously Optimized · Fabric', mcVersion: '1.21.1',
         loader: 'Fabric', loaderVersion: '0.16.5', modCount: 64, prismMs: 9 * h, lastLaunch: now - 96 * h, trackedMs: 2 * h, lastPlayed: now - 96 * h
-      },
-      {
-        ...base, id: '1.21.1', name: '1.21.1', label: '1.21.1 · Vanilla', mcVersion: '1.21.1', loader: null, loaderVersion: null, modCount: 0,
+      }),
+      instance({
+        id: '1.21.1', name: '1.21.1', auto: '1.21.1 · Vanilla', mcVersion: '1.21.1', loader: null, loaderVersion: null, modCount: 0,
         prismMs: 40 * 60_000, lastLaunch: now - 720 * h, trackedMs: 0, lastPlayed: null
-      }
+      })
     ]
   }
 }

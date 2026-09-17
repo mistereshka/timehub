@@ -64,12 +64,18 @@ export interface HostApi {
   /** Starts an instance through Prism Launcher. */
   launchMinecraft(id: string): void
   openMinecraftFolder(id: string): void
+  /** Your own name for an instance (null brings back the automatic one). */
+  renameMinecraft(id: string, name: string | null): void
+  /** Asks for a picture and makes it the instance's icon; false if nothing was chosen. */
+  pickMinecraftIcon(id: string): boolean
+  clearMinecraftIcon(id: string): void
 }
 export const HOST_METHODS = [
   'getMeta', 'getTrackerStatus', 'exportData', 'openDataFolder', 'setTitleBarTheme', 'openExternal',
   'listConnections', 'updateConnection', 'syncConnection', 'connectSpotify', 'disconnectConnection', 'getGameInfo',
   'getSpotifyOverview', 'searchLibrary', 'testReminder', 'getDotaStats', 'scanMusic', 'addMusicFolder', 'mediaControl', 'listGames',
-  'launchGame', 'listMinecraft', 'launchMinecraft', 'openMinecraftFolder'
+  'launchGame', 'listMinecraft', 'launchMinecraft', 'openMinecraftFolder',
+  'renameMinecraft', 'pickMinecraftIcon', 'clearMinecraftIcon'
 ] as const satisfies readonly (keyof HostApi)[]
 export type HostMethod = (typeof HOST_METHODS)[number]
 

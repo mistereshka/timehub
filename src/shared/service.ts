@@ -9,7 +9,7 @@ import { DEFAULT_CATEGORIES, DEFAULT_LABELS, guessCategoryKey, looksLikeGame, pr
 import { detectSite, isBrowserExe } from './sites'
 import { parseChat } from './social'
 import { albumKey, primaryArtist } from './media'
-import { isJavaExe, isMinecraftWindow, type MinecraftMatch } from './minecraft'
+import { MINECRAFT_LIBRARY_ID, MINECRAFT_PREFIX, isJavaExe, isMinecraftWindow, minecraftInstanceOf, type MinecraftMatch } from './minecraft'
 
 export interface ServiceOptions {
   now?: () => number
@@ -276,9 +276,14 @@ const toCall = (r: Row): T.CallInfo => ({
   end: Number(r.end_ms)
 })
 
+// The Minecraft card sums up every instance; other games count their own app.
+const IS_MINECRAFT_CARD = `l.source = 'tracker' AND l.external_id = '${MINECRAFT_LIBRARY_ID}'`
+const MINECRAFT_SESSIONS = `activity_sessions s JOIN apps ma ON ma.id = s.app_id WHERE ma.exe_path LIKE '${MINECRAFT_PREFIX}%'`
 const LIBRARY_SELECT = `SELECT l.*,
-  (SELECT COALESCE(SUM(s.end_ms - s.start_ms), 0) FROM activity_sessions s WHERE s.app_id = l.app_id) AS tracked_ms,
-  (SELECT MAX(s.end_ms) FROM activity_sessions s WHERE s.app_id = l.app_id) AS last_activity
+  CASE WHEN ${IS_MINECRAFT_CARD} THEN (SELECT COALESCE(SUM(s.end_ms - s.start_ms), 0) FROM ${MINECRAFT_SESSIONS})
+    ELSE (SELECT COALESCE(SUM(s.end_ms - s.start_ms), 0) FROM activity_sessions s WHERE s.app_id = l.app_id) END AS tracked_ms,
+  CASE WHEN ${IS_MINECRAFT_CARD} THEN (SELECT MAX(s.end_ms) FROM ${MINECRAFT_SESSIONS})
+    ELSE (SELECT MAX(s.end_ms) FROM activity_sessions s WHERE s.app_id = l.app_id) END AS last_activity
   FROM library_items l`
 
 // The first `?` is "now", used as the end of a running timer.
@@ -1610,14 +1615,25 @@ export class Service {
     const recent = now - 14 * DAY
     const stale = now - 30 * DAY
     const games = this.db.all(
-      `SELECT a.id, a.display_name, k.provider, k.external_id, k.name AS link_name, k.image_url,
+      `SELECT a.id, a.display_name, a.exe_path, k.provider, k.external_id, k.name AS link_name, k.image_url,
          (SELECT MAX(s.end_ms) FROM activity_sessions s WHERE s.app_id = a.id) AS last
        FROM apps a LEFT JOIN app_links k ON k.app_id = a.id WHERE a.is_game = 1 AND a.ignored = 0`
     )
     let changed = 0
     transaction(this.db, () => {
+      let minecraftLast: number | null = null
       for (const g of games) {
         if (g.last == null) continue
+        // Minecraft instances share one card (below) instead of a card each.
+        if (minecraftInstanceOf(String(g.exe_path)) != null) {
+          minecraftLast = Math.max(minecraftLast ?? 0, Number(g.last))
+          const own = this.db.get(`SELECT id FROM library_items WHERE source = 'tracker' AND app_id = ? AND external_id = ?`, [g.id, String(g.id)])
+          if (own) {
+            this.db.run('DELETE FROM library_items WHERE id = ?', [own.id])
+            changed++
+          }
+          continue
+        }
         let item = this.db.get('SELECT * FROM library_items WHERE app_id = ? LIMIT 1', [g.id])
         if (!item && g.provider === 'steam') {
           item = this.db.get(`SELECT * FROM library_items WHERE source = 'steam' AND external_id = ?`, [g.external_id])
@@ -1642,6 +1658,25 @@ export class Service {
             status, g.id, now, now, item.id
           ])
           changed++
+        }
+      }
+      if (minecraftLast != null) {
+        const card = this.db.get(`SELECT * FROM library_items WHERE source = 'tracker' AND external_id = ?`, [MINECRAFT_LIBRARY_ID])
+        if (!card) {
+          this.db.run(
+            `INSERT INTO library_items (kind, title, status, source, external_id, status_auto, created_at, updated_at, started_at)
+             VALUES ('game', 'Minecraft', ?, 'tracker', ?, 1, ?, ?, ?)`,
+            [minecraftLast >= recent ? 'active' : 'on_hold', MINECRAFT_LIBRARY_ID, now, now, now]
+          )
+          changed++
+        } else if (bool(card.status_auto)) {
+          let status: string = card.status
+          if (minecraftLast >= recent && ['planned', 'on_hold', 'dropped'].includes(status)) status = 'active'
+          else if (minecraftLast < stale && status === 'active') status = 'on_hold'
+          if (status !== card.status) {
+            this.db.run('UPDATE library_items SET status = ?, updated_at = ? WHERE id = ?', [status, now, card.id])
+            changed++
+          }
         }
       }
     })
