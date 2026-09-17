@@ -101,7 +101,7 @@ export function MinecraftPage(): ReactNode {
                 label={t('mc.lastPlayed')}
                 value={
                   last ? (
-                    <span className="truncate" title={last.label}>
+                    <span className="truncate" style={{ display: 'block' }} title={last.label}>
                       {`${last.label} · ${ago(lastAt(last))}`}
                     </span>
                   ) : (
