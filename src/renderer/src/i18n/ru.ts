@@ -739,6 +739,7 @@ export const ru: Record<MessageKey, string> = {
   'games.played': '{time} в игре',
   'games.steamHours': '{n} ч в Steam',
   'games.prismHours': '{n} ч в Prism',
+  'games.instances': 'Сборки',
   'mc.title': 'Minecraft',
   'mc.subtitle': 'Сборки из Prism Launcher: сколько ты играл в каждой — и запуск в один клик.',
   'mc.play': 'Играть',

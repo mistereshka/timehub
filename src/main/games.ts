@@ -80,17 +80,19 @@ export class GamesService {
           : { kind: 'exe', path: app?.exePath ?? launcher ?? '', args: [] }
       add({ id: `battlenet:${g.key}`, name: g.name, platform: 'battlenet', cover: null, platformMinutes: null, ...stats(app) }, launch)
     }
-    // Minecraft instances from Prism Launcher, each on its own (they have their own tab too)
-    const prism = this.minecraft.launcherPath()
+    // Minecraft is one tile that opens its page; the instances are started from there.
     const minecraft = this.minecraft.overview()
-    for (const i of minecraft.instances) {
+    if (minecraft.found && minecraft.instances.length) {
+      const { instances } = minecraft
+      const last = Math.max(0, minecraft.other?.lastPlayed ?? 0, ...instances.map((i) => Math.max(i.lastLaunch ?? 0, i.lastPlayed ?? 0)))
       add(
         {
-          id: `minecraft:${i.id}`, name: i.customName ? i.label : `Minecraft ${i.label}`, platform: 'minecraft', cover: minecraft.art.poster,
-          icon: i.icon, appId: i.appId,
-          trackedMs: i.trackedMs, lastPlayed: Math.max(i.lastLaunch ?? 0, i.lastPlayed ?? 0) || null, platformMinutes: Math.round(i.prismMs / 60_000)
+          id: 'minecraft', name: 'Minecraft', platform: 'minecraft', cover: minecraft.art.poster, icon: null, appId: null,
+          trackedMs: instances.reduce((sum, i) => sum + i.trackedMs, minecraft.other?.trackedMs ?? 0),
+          lastPlayed: last || null,
+          platformMinutes: Math.round(instances.reduce((sum, i) => sum + i.prismMs, 0) / 60_000)
         },
-        { kind: 'exe', path: prism ?? '', args: ['--launch', i.id] }
+        { kind: 'exe', path: '', args: [] }
       )
     }
     const covered = new Set(out.map((g) => g.appId).filter((id) => id != null))

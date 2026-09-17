@@ -737,6 +737,7 @@ export const en = {
   'games.played': '{time} played',
   'games.steamHours': '{n} h on Steam',
   'games.prismHours': '{n} h in Prism',
+  'games.instances': 'Instances',
   'mc.title': 'Minecraft',
   'mc.subtitle': 'Instances from Prism Launcher: how long you played each one, and one click to start it.',
   'mc.play': 'Play',

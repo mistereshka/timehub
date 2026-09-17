@@ -12,7 +12,7 @@ import { Blankslate, Cover, ErrorFlash } from '../components/common'
 type Filter = 'all' | GamePlatform
 type Sort = 'recent' | 'played' | 'name'
 const FILTERS: Filter[] = ['all', 'steam', 'epic', 'battlenet', 'minecraft', 'other']
-const PLATFORM_NAME: Record<GamePlatform, string> = { steam: 'Steam', epic: 'Epic', battlenet: 'Battle.net', minecraft: 'Minecraft', other: '' }
+const PLATFORM_NAME: Record<GamePlatform, string> = { steam: 'Steam', epic: 'Epic', battlenet: 'Battle.net', minecraft: 'Prism', other: '' }
 
 const playedMs = (g: InstalledGame): number => Math.max(g.trackedMs, (g.platformMinutes ?? 0) * MINUTE)
 
@@ -83,11 +83,20 @@ export function GamesPage(): ReactNode {
           <div className="games-grid">
             {shown.map((g) => (
               <div key={g.id} className="game-tile">
-                <button type="button" className="game-cover" onClick={() => void launch.run(g.id)} title={t('games.play')}>
-                  <Cover src={g.cover} title={g.name} width="100%" height="100%" />
-                  <span className="game-platform">{platformName(g.platform)}</span>
-                  <span className={`game-play${launching === g.id ? ' busy' : ''}`}>{launching === g.id ? t('games.launching') : `▶ ${t('games.play')}`}</span>
-                </button>
+                {g.platform === 'minecraft' ? (
+                  // Minecraft opens its page with the instances
+                  <button type="button" className="game-cover" onClick={() => void navigate('/minecraft')} title={t('games.instances')}>
+                    <Cover src={g.cover} title={g.name} width="100%" height="100%" />
+                    <span className="game-platform">{platformName(g.platform)}</span>
+                    <span className="game-play">{`▦ ${t('games.instances')}`}</span>
+                  </button>
+                ) : (
+                  <button type="button" className="game-cover" onClick={() => void launch.run(g.id)} title={t('games.play')}>
+                    <Cover src={g.cover} title={g.name} width="100%" height="100%" />
+                    <span className="game-platform">{platformName(g.platform)}</span>
+                    <span className={`game-play${launching === g.id ? ' busy' : ''}`}>{launching === g.id ? t('games.launching') : `▶ ${t('games.play')}`}</span>
+                  </button>
+                )}
                 <div className="game-name truncate" title={g.name}>
                   {g.name}
                 </div>
