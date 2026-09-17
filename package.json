@@ -1,6 +1,6 @@
 {
   "name": "timehub",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tasks, time tracking and an automatic timeline of your day for Windows",
   "main": "./out/main/index.js",
   "author": "mistereshka",
