@@ -20,6 +20,7 @@ timehub notices what you're doing on your PC, the way Discord notices games, and
 - **Playing / Listening cards** — hover the header to see the game or track with its cover, time played, streaks, players online (Steam, Roblox) and track controls. Visuals move with the music; you can turn them off.
 - **Music** — a player for your own files (MP3/FLAC tags, covers, queue, media keys) and a remote for Yandex Music, Spotify or YouTube. Every play goes to your stats and the library.
 - **Games** — everything installed from Steam (several accounts), Epic and Battle.net, plus games the tracker has seen; one click to play. Dota 2 rank, record, recent matches and heroes via OpenDota.
+- **Minecraft** — Minecraft running in Java is recognised and split by Prism Launcher instance: time per modpack, mod loader and mods, one-click launch, your own names and pixel-art icons.
 - **Social** — time in Telegram, Discord and other messengers, who you talk to and your calls, taken from Windows' own record of which app used the microphone.
 - **Library** — anime, manga, books, films, series, games and music with statuses; AniLib, MangaLib, Shikimori, Steam and NewDeaf keep it up to date.
 - **Reports** — an all-time report for every app and site, a contribution graph of your activity and an activity feed.
@@ -48,7 +49,7 @@ timehub notices what you're doing on your PC, the way Discord notices games, and
 
 ## Install
 
-Download `timehub-Setup-*.exe` from [Releases](https://github.com/mistereshka/timehub/releases) — currently the **v0.2.0** pre-release for Windows 10/11. The installer isn't code-signed yet, so Windows SmartScreen may warn you: choose *More info* → *Run anyway*.
+Download `timehub-Setup-*.exe` from [Releases](https://github.com/mistereshka/timehub/releases) — currently the **v0.3.0** pre-release for Windows 10/11. The installer isn't code-signed yet, so Windows SmartScreen may warn you: choose *More info* → *Run anyway*.
 
 Or build it from source (requires [Node.js 24](https://nodejs.org)):
 
